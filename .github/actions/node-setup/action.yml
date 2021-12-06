@@ -1,0 +1,33 @@
+name: 'Node setup action'
+
+description: 'Checkout and install Node.js and NPM'
+
+inputs:
+    node-version:
+        description: 'Node version to setup with'
+        required: true
+        default: '16'
+    node-auth-token:
+        description: 'Token to use for NPM authentication'
+        required: true
+
+runs:
+    using: 'composite'
+    steps:
+        - uses: actions/setup-node@v1
+          with:
+              node-version: ${{ input.node-version }}
+              registry-url: 'https://npm.pkg.github.com'
+
+        - uses: actions/cache@v2
+          with:
+              path: ~/.npm
+              key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+              restore-keys: |
+                  ${{ runner.os }}-node-
+
+        - name: Install deps
+          run: npm ci
+          shell: bash
+          env:
+              NODE_AUTH_TOKEN: ${{ inputs.node-auth-token }}

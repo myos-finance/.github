@@ -5,6 +5,7 @@ on:
     inputs:
       node-version:
         description: "Node version to use for the lint"
+        type: string
         required: true
         default: 16
 

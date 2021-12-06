@@ -1,6 +1,6 @@
 name: 'Node setup action'
 
-description: 'Checkout and install Node.js and NPM'
+description: 'Install Node.js and NPM with deps'
 
 inputs:
     node-version:

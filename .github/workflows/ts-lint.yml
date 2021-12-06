@@ -4,10 +4,9 @@ on:
   workflow_call:
     inputs:
       node-version:
-        description: "Node version to use for the lint"
+        description: "Node version to use for the lint job"
         type: string
         required: true
-        default: 16
 
 jobs:
   job:
@@ -16,22 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - uses: actions/setup-node@v1
+      - uses: myos-finance/.github/.github/actions/node-setup@main
         with:
-          node-version: ${{ inputs.node-version }}
-          registry-url: "https://npm.pkg.github.com"
-
-      - uses: actions/cache@v2
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Install deps
-        run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+          - node-version: ${{ inputs.node-version }}
+          - node-auth-token: ${{ secrets.CI_TOKEN }}
 
       - name: ESLint
         run: npm run eslint

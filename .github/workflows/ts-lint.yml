@@ -7,6 +7,10 @@ on:
         description: "Node version to use for the lint job"
         type: string
         required: true
+    secrets:
+      node-auth-token:
+        description: "Node auth token"
+        required: true
 
 jobs:
   job:
@@ -18,7 +22,7 @@ jobs:
       - uses: myos-finance/.github/.github/actions/node-setup@main
         with:
           node-version: ${{ inputs.node-version }}
-          node-auth-token: ${{ secrets.CI_TOKEN }}
+          node-auth-token: ${{ secrets.node-auth-token }}
 
       - name: ESLint
         run: npm run eslint

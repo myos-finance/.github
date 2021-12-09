@@ -23,7 +23,6 @@ runs:
       shell: bash
       run: |
         echo "GCLOUD_PROJECT=${{ inputs.gcloud-project }}" >> $GITHUB_ENV
-        echo "GITHUB_SHA=${{ github.sha }}" >> $GITHUB_ENV
         echo "IMAGE=${{ github.event.repository.name }}" >> $GITHUB_ENV
 
     - uses: google-github-actions/setup-gcloud@master

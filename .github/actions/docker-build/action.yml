@@ -6,6 +6,12 @@ inputs:
   version-using:
     description: "Generate a version using branch name or Git tag. One of 'tag' or 'branch'"
     required: true
+  branch-name:
+    description: "The branch name to use when generating a version using Branch. Defaults to $GITHUB_REF"
+    required: false
+  git-sha:
+    description: "The Git SHA to use when generating a version using Branch. Default to $GITHUB_SHA"
+    required: false
   gcloud-project:
     description: "GCP project to use for the build"
     required: true
@@ -41,8 +47,12 @@ runs:
       shell: bash
       if: ${{ inputs.version-using == 'branch' }}
       run: |
-        BRANCH=$(echo "${GITHUB_REF#refs/heads/}" | sed -e 's,.*/\(.*\),\1,')
-        COMMIT_HASH_SHORT=$(git rev-parse --short "$GITHUB_SHA")
+        BRANCH_REF='${{ inputs.branch-name }}'
+        SHA_REF='${{ inputs.git-sha }}'
+        ${BRANCH_REF:=$GITHUB_REF}
+        ${SHA_REF:=$GITHUB_SHA}
+        BRANCH=$(echo "${BRANCH_REF#refs/heads/}" | sed -e 's,.*/\(.*\),\1,')
+        COMMIT_HASH_SHORT=$(git rev-parse --short "$SHA_REF")
         echo "VERSION=$(echo $BRANCH'_'$COMMIT_HASH_SHORT)" >> $GITHUB_ENV
 
     - name: Generate version using tag

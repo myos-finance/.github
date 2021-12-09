@@ -49,8 +49,8 @@ runs:
       run: |
         BRANCH_REF='${{ inputs.branch-name }}'
         SHA_REF='${{ inputs.git-sha }}'
-        ${BRANCH_REF:=$GITHUB_REF}
-        ${SHA_REF:=$GITHUB_SHA}
+        echo ${BRANCH_REF:=$GITHUB_REF}
+        echo ${SHA_REF:=$GITHUB_SHA}
         BRANCH=$(echo "${BRANCH_REF#refs/heads/}" | sed -e 's,.*/\(.*\),\1,')
         COMMIT_HASH_SHORT=$(git rev-parse --short "$SHA_REF")
         echo "VERSION=$(echo $BRANCH'_'$COMMIT_HASH_SHORT)" >> $GITHUB_ENV

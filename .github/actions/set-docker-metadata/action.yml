@@ -1,0 +1,48 @@
+name: Set docker metadata
+
+description: Generates docker image tag and deployment environment, sets workflow environment vars.
+
+inputs:
+  image-tag-using:
+    description: "Generate a version using branch name or Git tag. One of 'git-tag' or 'git-branch'"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Generate tag using branch name
+      shell: bash
+      if: ${{ inputs.image-tag-using == 'git-branch' }}
+      run: |
+        BRANCH_REF='${{ github.event.workflow_run.head_branch }}'
+        SHA_REF='${{ github.event.workflow_run.head_sha }}'
+        echo ${BRANCH_REF:=$GITHUB_REF}
+        echo ${SHA_REF:=$GITHUB_SHA}
+        BRANCH=$(echo "${BRANCH_REF#refs/heads/}" | sed -e 's,.*/\(.*\),\1,')
+        COMMIT_HASH_SHORT=$(git rev-parse --short "$SHA_REF")
+        echo "VERSION=$(echo $BRANCH'_'$COMMIT_HASH_SHORT)" >> $GITHUB_ENV
+
+    - name: Generate version using tag
+      shell: bash
+      if: ${{ inputs.image-tag-using == 'git-tag' }}
+      run: |
+        TAG=$(echo "${GITHUB_REF#refs/tags/}" | sed -e 's,^v,,')
+        echo "_VERSION=$TAG" >> $GITHUB_ENV
+
+    - name: Detect environment
+      shell: bash
+      run: |
+        if [[ $_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "DEPLOYMENT_ENV='production'" >> $GITHUB_ENV
+        elif [[ $_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)$ ]]; then
+          echo "DEPLOYMENT_ENV='development'" >> $GITHUB_ENV
+        elif [[ $_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)$ ]]; then
+          echo "DEPLOYMENT_ENV='staging'" >> $GITHUB_ENV
+        else
+          echo "DEPLOYMENT_ENV='test'" >> $GITHUB_ENV
+        fi
+
+    - name: Set env vars
+      shell: bash
+      run: |
+        echo "DOCKER_IMAGE_VERSION=$_VERSION" >> $GITHUB_ENV

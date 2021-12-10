@@ -33,13 +33,13 @@ runs:
       shell: bash
       run: |
         if [[ $_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          echo "DEPLOYMENT_ENV='production'" >> $GITHUB_ENV
+          echo "DEPLOYMENT_ENV=production" >> $GITHUB_ENV
         elif [[ $_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)$ ]]; then
-          echo "DEPLOYMENT_ENV='development'" >> $GITHUB_ENV
+          echo "DEPLOYMENT_ENV=development" >> $GITHUB_ENV
         elif [[ $_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)$ ]]; then
-          echo "DEPLOYMENT_ENV='staging'" >> $GITHUB_ENV
+          echo "DEPLOYMENT_ENV=staging" >> $GITHUB_ENV
         else
-          echo "DEPLOYMENT_ENV='test'" >> $GITHUB_ENV
+          echo "DEPLOYMENT_ENV=test" >> $GITHUB_ENV
         fi
 
     - name: Set env vars

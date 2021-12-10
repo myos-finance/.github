@@ -1,17 +1,8 @@
-name: build-and-publish-image
+name: Build and publish image
 
 description: Builds and pushes the Docker image.
 
 inputs:
-  version-using:
-    description: "Generate a version using branch name or Git tag. One of 'tag' or 'branch'"
-    required: true
-  branch-name:
-    description: "The branch name to use when generating a version using Branch. Defaults to $GITHUB_REF"
-    required: false
-  git-sha:
-    description: "The Git SHA to use when generating a version using Branch. Default to $GITHUB_SHA"
-    required: false
   gcloud-project:
     description: "GCP project to use for the build"
     required: true
@@ -29,7 +20,8 @@ runs:
       shell: bash
       run: |
         echo "GCLOUD_PROJECT=${{ inputs.gcloud-project }}" >> $GITHUB_ENV
-        echo "IMAGE=${{ github.event.repository.name }}" >> $GITHUB_ENV
+        echo "IMAGE_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
+        echo "VERSION=$DOCKER_IMAGE_VERSION" >> $GITHUB_ENV
 
     - uses: google-github-actions/setup-gcloud@master
       with:
@@ -43,25 +35,6 @@ runs:
         # via gcloud command-line tool.
         gcloud auth configure-docker
 
-    - name: Generate version using branch name
-      shell: bash
-      if: ${{ inputs.version-using == 'branch' }}
-      run: |
-        BRANCH_REF='${{ inputs.branch-name }}'
-        SHA_REF='${{ inputs.git-sha }}'
-        echo ${BRANCH_REF:=$GITHUB_REF}
-        echo ${SHA_REF:=$GITHUB_SHA}
-        BRANCH=$(echo "${BRANCH_REF#refs/heads/}" | sed -e 's,.*/\(.*\),\1,')
-        COMMIT_HASH_SHORT=$(git rev-parse --short "$SHA_REF")
-        echo "VERSION=$(echo $BRANCH'_'$COMMIT_HASH_SHORT)" >> $GITHUB_ENV
-
-    - name: Generate version using tag
-      shell: bash
-      if: ${{ inputs.version-using == 'tag' }}
-      run: |
-        TAG=$(echo "${GITHUB_REF#refs/tags/v}" | sed -e 's,^v,,')
-        echo "VERSION=$TAG" >> $GITHUB_ENV
-
     # Build the Docker image
     - name: Build
       shell: bash
@@ -71,7 +44,7 @@ runs:
     - name: Publish
       shell: bash
       run: |
-        IMAGE_ID=gcr.io/$GCLOUD_PROJECT/$IMAGE
+        IMAGE_ID=gcr.io/$GCLOUD_PROJECT/$IMAGE_NAME
         echo IMAGE_ID=$IMAGE_ID
         echo VERSION=$VERSION
         docker tag image $IMAGE_ID:$VERSION

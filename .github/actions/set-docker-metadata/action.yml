@@ -46,3 +46,4 @@ runs:
       shell: bash
       run: |
         echo "DOCKER_IMAGE_VERSION=$_VERSION" >> $GITHUB_ENV
+        echo "DOCKER_IMAGE_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV

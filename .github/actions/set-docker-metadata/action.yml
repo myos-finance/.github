@@ -20,7 +20,7 @@ runs:
         echo ${SHA_REF:=$GITHUB_SHA}
         BRANCH=$(echo "${BRANCH_REF#refs/heads/}" | sed -e 's,.*/\(.*\),\1,')
         COMMIT_HASH_SHORT=$(git rev-parse --short "$SHA_REF")
-        echo "VERSION=$(echo $BRANCH'_'$COMMIT_HASH_SHORT)" >> $GITHUB_ENV
+        echo "_VERSION=$(echo $BRANCH'_'$COMMIT_HASH_SHORT)" >> $GITHUB_ENV
 
     - name: Generate version using tag
       shell: bash

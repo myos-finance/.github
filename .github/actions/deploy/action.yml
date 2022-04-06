@@ -1,0 +1,50 @@
+name: Deploy
+
+description: Deploys microservice to the desired environment via argocd
+
+inputs:
+  environment:
+    description: "Environment to deploy in (only dev at the moment)"
+    required: false
+    default: 'dev'
+  microservice:
+    description: "Microservice to be deployed"
+    required: true
+  version:
+    description: "Version to be deployed"
+    required: true
+  token:
+    description: "PAT token of the myos-ci user"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check environment
+      shell: bash
+      run: |
+        ENVIRONMENTS="dev" # Only dev in the list at the moment
+        [[ $ENVIRONMENTS =~ (^|[[:space:]])${{ inputs.environment }}($|[[:space:]]) ]]
+
+    - uses: actions/checkout@v3
+      with:
+        repository: 'myos-finance/gitops'
+        token: ${{ inputs.token }}
+
+    - name: Git config
+      shell: bash
+      run: |
+        git config --global user.email "ci@myos.com"
+        git config --global user.name "myos-ci"
+
+    - name: Update version
+      shell: bash
+      run: |
+        sed -i "s/newTag: \(.*\)/newTag: ${{ inputs.version }}/" environments/dev/${{ inputs.microservice }}/kustomization.yaml
+
+    - name: Commit & push
+      shell: bash
+      run: |
+        git add environments/dev/${{ inputs.microservice }}/kustomization.yaml
+        git commit -m "Update ${{ inputs.microservice }} to ${{ inputs.version }} in ${{ inputs.environment }}"
+        git push

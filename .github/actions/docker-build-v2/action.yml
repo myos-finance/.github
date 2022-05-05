@@ -1,0 +1,51 @@
+name: Build and publish image
+
+description: Builds and pushes the Docker image.
+
+inputs:
+  gcloud-project:
+    description: "GCP project to use for the build"
+    required: true
+  gcloud-credentials:
+    description: "Credentials corresponding to the service account (json)"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set env vars
+      shell: bash
+      run: |
+        echo "GCLOUD_PROJECT=${{ inputs.gcloud-project }}" >> $GITHUB_ENV
+        echo "IMAGE_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
+        echo "VERSION=$DOCKER_IMAGE_VERSION" >> $GITHUB_ENV
+
+    - name: 'auth'
+      uses: 'google-github-actions/auth@v0'
+      with:
+        credentials_json: "${{ inputs.gcloud-credentials }}"
+
+    - name: Setup Gcloud
+      uses: google-github-actions/setup-gcloud@v0
+
+    - name: Set up docker auth
+      shell: bash
+      run: |
+        # Set up docker to authenticate
+        # via gcloud command-line tool.
+        gcloud auth configure-docker
+
+    # Build the Docker image
+    - name: Build
+      shell: bash
+      run: docker build --build-arg APP_VERSION=$VERSION -t image .
+
+    # Push the Docker image to Google Container Registry
+    - name: Publish
+      shell: bash
+      run: |
+        IMAGE_ID=gcr.io/$GCLOUD_PROJECT/$IMAGE_NAME
+        echo IMAGE_ID=$IMAGE_ID
+        echo VERSION=$VERSION
+        docker tag image $IMAGE_ID:$VERSION
+        docker push $IMAGE_ID:$VERSION

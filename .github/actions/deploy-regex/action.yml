@@ -1,0 +1,22 @@
+name: Set Regex to deploy
+
+description: Set regex to match to deploy
+
+inputs:
+  environment:
+    description: "Environment"
+    required: false
+    default: 'development'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set trigger regex
+      shell: bash
+      run: |
+        if [[ ${{ inputs.environment }} == 'production' ]]
+        then
+          echo "TRIGGER_REGEX=^v[0-9]+\.[0-9]+\.[0-9]+$" >> $GITHUB_ENV
+        else
+          echo "TRIGGER_REGEX=^v[0-9]+\.[0-9]+\.[0-9]+\-beta\.[0-9]+$" >> $GITHUB_ENV
+        fi

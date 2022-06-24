@@ -75,7 +75,6 @@ runs:
     - name: Terraform fmt
       shell: bash
       run: terraform fmt -check
-      continue-on-error: true
       working-directory: ${{ inputs.working-directory }}
 
     - name: Terraform validate

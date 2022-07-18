@@ -81,6 +81,8 @@ runs:
       shell: bash
       run: terraform validate
       working-directory: ${{ inputs.working-directory }}
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
 
     - name: Terraform plan
       shell: bash

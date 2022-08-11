@@ -4,7 +4,7 @@ description: Deploys microservice to the desired environment via argocd
 
 inputs:
   environment:
-    description: "Environment to deploy in (only dev at the moment)"
+    description: "Environment to deploy in (dev/prod)"
     required: false
     default: 'dev'
   microservice:
@@ -40,11 +40,11 @@ runs:
     - name: Update version
       shell: bash
       run: |
-        sed -i "s/newTag: \(.*\)/newTag: ${{ inputs.version }}/" environments/dev/${{ inputs.microservice }}/kustomization.yaml
+        sed -i "s/newTag: \(.*\)/newTag: ${{ inputs.version }}/" environments/${{ inputs.environment }}/${{ inputs.microservice }}/kustomization.yaml
 
     - name: Commit & push
       shell: bash
       run: |
-        git add environments/dev/${{ inputs.microservice }}/kustomization.yaml
+        git add environments/${{ inputs.environment }}/${{ inputs.microservice }}/kustomization.yaml
         git commit -m "Update ${{ inputs.microservice }} to ${{ inputs.version }} in ${{ inputs.environment }}"
         git push

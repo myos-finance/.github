@@ -23,7 +23,7 @@ runs:
     - name: Check environment
       shell: bash
       run: |
-        ENVIRONMENTS="dev" # Only dev in the list at the moment
+        ENVIRONMENTS="dev prod" # dev and prod in the list at the moment
         [[ $ENVIRONMENTS =~ (^|[[:space:]])${{ inputs.environment }}($|[[:space:]]) ]]
 
     - uses: actions/checkout@v3

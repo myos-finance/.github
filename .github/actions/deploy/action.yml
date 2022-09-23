@@ -4,7 +4,7 @@ description: Deploys microservice to the desired environment via argocd
 
 inputs:
   environment:
-    description: "Environment to deploy in (dev/prod)"
+    description: "Environment to deploy in (dev/stag/prod)"
     required: false
     default: 'dev'
   microservice:
@@ -23,7 +23,7 @@ runs:
     - name: Check environment
       shell: bash
       run: |
-        ENVIRONMENTS="dev prod" # dev and prod in the list at the moment
+        ENVIRONMENTS="dev stag prod" # dev and prod in the list at the moment
         [[ $ENVIRONMENTS =~ (^|[[:space:]])${{ inputs.environment }}($|[[:space:]]) ]]
 
     - uses: actions/checkout@v3

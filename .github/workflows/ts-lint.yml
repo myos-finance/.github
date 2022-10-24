@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - uses: myos-finance/.github/.github/actions/node-setup@main
+      - uses: myos-finance/.github/.github/actions/node-setup@v0
         with:
           node-version: ${{ inputs.node-version }}
           node-auth-token: ${{ secrets.node-auth-token }}

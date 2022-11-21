@@ -84,7 +84,7 @@ runs:
 
     - name: Terraform plan
       shell: bash
-      run: terraform plan
+      run: terraform plan -out tfplan
       working-directory: ${{ inputs.working-directory }}
       env:
         GOOGLE_CREDENTIALS: /tmp/.google_credentials.json
@@ -96,7 +96,7 @@ runs:
     - name: Terraform apply
       shell: bash
       if: ${{ inputs.current-branch == format('refs/heads/{0}', inputs.apply-branch) }}
-      run: terraform apply -auto-approve
+      run: terraform apply tfplan
       working-directory: ${{ inputs.working-directory }}
       env:
         GOOGLE_CREDENTIALS: /tmp/.google_credentials.json

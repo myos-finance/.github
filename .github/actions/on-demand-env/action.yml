@@ -9,10 +9,44 @@ inputs:
   branch:
     description: "Branch to be deployed"
     required: true
+  google-credentials:
+    description: 'Google credentials (on-demand service account json file)'
+    required: true
+  cluster-name:
+    description: "Name of the cluster to deploy to"
+    required: false
+    default: 'myos-dev'
+  cluster-region:
+    description: "Region of the cluster to deploy to"
+    required: false
+    default: 'europe-west3'
 
 runs:
   using: 'composite'
   steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        repository: 'myos-finance/.github'
+        ref: 'dev-543-on-demand'
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+
+    - name: auth
+      uses: google-github-actions/auth@v0
+      with:
+        credentials_json: ${{ inputs.google-credentials }}
+
+    - name: setup gcloud
+      uses: google-github-actions/setup-gcloud@v0
+
+    - name: Pull kubernetes configuration
+      uses: 'google-github-actions/get-gke-credentials@v0'
+      with:
+        cluster_name: ${{ inputs.cluster-name }}
+        location: ${{ inputs.cluster-region }}
+
     - name: Get namespace
       shell: bash
       run: |
@@ -44,3 +78,40 @@ runs:
       env:
         NAMESPACE: ${{ env.NAMESPACE }}
         COUNT_NS: ${{ env.COUNT_NS }}
+
+    - name: Create DB instance
+      shell: bash
+      run: |
+        # Create DB instance
+        # $1: template file path
+        # $2: namespace name
+        # $3: db name
+        # $4: db size
+        create_db_instance () {
+          echo "Creating DB instance..."
+          DB_TEMPLATE_FILE=$1
+          NAMESPACE=$2
+          DB_NAME=$3
+          DB_SIZE=$4
+
+          pwd
+          ls -la
+          ls -la .github
+          ls -la .github/actions/on-demand-env/postgres_db_template.yaml
+          cp $DB_TEMPLATE_FILE new_db.yaml
+          sed -i '' "s/#NAMESPACE_NAME#/${NAMESPACE}/" new_db.yaml
+          sed -i '' "s/#DB_NAME#/${DB_NAME}/" new_db.yaml
+          sed -i '' "s/#DB_SIZE#/${DB_SIZE}/" new_db.yaml
+          kubectl create -f new_db.yaml
+        }
+
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          create_db_instance "$DB_TEMPLATE_FILE" "$NAMESPACE" "$DB_NAME" "$DB_SIZE"
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+        DB_NAME: ${{ inputs.db-name }}
+        DB_SIZE: ${{ inputs.db-size }}
+        DB_TEMPLATE_FILE: ${{ inputs.db-template }}

@@ -1,0 +1,46 @@
+name: 'On demand environment action'
+
+description: 'Create on demand environment'
+
+inputs:
+  microservice:
+    description: "Specific microservice to be deployed"
+    required: true
+  branch:
+    description: "Branch to be deployed"
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Get namespace
+      shell: bash
+      run: |
+        NAMESPACE=$(echo "temp-${MICROSERVICE}-${BRANCH}" | cut -c-63 | tr '[:upper:]' '[:lower:]')
+        echo "NAMESPACE=$NAMESPACE" >> $GITHUB_ENV
+      env:
+        MICROSERVICE: ${{ inputs.microservice }}
+        BRANCH: ${{ inputs.branch }}
+
+    - name: Count namespace
+      shell: bash
+      run: |
+        # Check if namespace exists
+        ## || true to bypass grep exit status > 0 when not matching -> https://stackoverflow.com/questions/57788813/grep-return-0-if-no-match
+        COUNT_NS=$(kubectl get namespace | grep "$NAMESPACE" | awk '{print $1}' | grep -E "^$NAMESPACE$" | wc -l | xargs || true)
+        echo "COUNT_NS=$COUNT_NS" >> $GITHUB_ENV
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+
+    - name: Create namespace
+      shell: bash
+      run: |
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          echo "Creating namespace ${NAMESPACE}..."
+          kubectl create namespace "$NAMESPACE"
+          kubectl label namespaces "$NAMESPACE" cleanup=true --overwrite=true
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}

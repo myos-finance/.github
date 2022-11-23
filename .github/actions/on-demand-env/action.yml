@@ -32,6 +32,10 @@ inputs:
     description: "Path to the DB template (postgresql operator)"
     required: false
     default: '.github/actions/on-demand-env/postgres_db_template.yaml'
+  db-create-timeout:
+    description: "Timeout to have the DB running (in seconds)"
+    required: false
+    default: '60'
 
 runs:
   using: 'composite'
@@ -123,3 +127,45 @@ runs:
         DB_NAME: ${{ inputs.db-name }}
         DB_SIZE: ${{ inputs.db-size }}
         DB_TEMPLATE_FILE: ${{ inputs.db-template }}
+
+    - name: Check DB instance
+      shell: bash
+      run: |
+        # Check DB
+        # $1: namespace name
+        # $2: db name
+        # $3: timeout (in seconds)
+        check_db () {
+          echo "Checking DB status..."
+          NAMESPACE=$1
+          DB_NAME=$2
+          TIMEOUT=$3
+
+          while [ $TIMEOUT -gt 0 ]
+          do
+            sleep 10
+            echo "Retrying..."
+            DB_STATUS=$(kubectl -n "$NAMESPACE" get pod ${DB_NAME}-0 --output="jsonpath={.status.containerStatuses[*].ready}")
+            if [[ "$DB_STATUS" == "true" ]]; then
+              TIMEOUT=0
+            else
+              ((TIMEOUT=TIMEOUT-10))
+            fi
+          done
+
+          if [[ "$DB_STATUS" != "true" ]]; then
+            echo "DB is not ready, exiting..."
+            exit 1
+          else
+            echo "DB is ready"
+          fi
+        }
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          check_db "$NAMESPACE" "$DB_NAME" "$TIMEOUT"
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+        DB_NAME: ${{ inputs.db-name }}
+        TIMEOUT: ${{ inputs.db-create-timeout }}

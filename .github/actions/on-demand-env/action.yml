@@ -40,6 +40,10 @@ inputs:
     description: "DB admin user"
     required: false
     default: 'postgres'
+  db-init-file:
+    description: "DB init file (create DBs)"
+    required: false
+    default: '.github/actions/on-demand-env/create_db.sql'
 
 runs:
   using: 'composite'
@@ -187,3 +191,37 @@ runs:
         COUNT_NS: ${{ env.COUNT_NS }}
         DB_USER: ${{ inputs.db-user }}
         DB_NAME: ${{ inputs.db-name }}
+
+    - name: Init DB
+      shell: bash
+      run: |
+        # Init DB
+        # $1: namespace name
+        # $2: db name
+        # $3: init db file
+        # $4: db user
+        # $5: db pass
+        init_db () {
+          echo "Init DB..."
+          NAMESPACE=$1
+          DB_NAME=$2
+          INIT_DB_FILE=$3
+          DB_USER=$4
+          DB_PASS=$5
+          DECRYPTED_DB_PASS=$(echo "$DB_PASS" | base64 -d)
+          BASENAME_INIT_DB=$(basename $INIT_DB_FILE)
+
+          kubectl -n "$NAMESPACE" cp "$INIT_DB_FILE" "${DB_NAME}-0:/tmp"
+          kubectl -n "$NAMESPACE" exec -i "${DB_NAME}-0" -- sh -c "export PGPASSWORD=\"${DECRYPTED_DB_PASS}\" && psql -U \"${DB_USER}\" -h localhost -a -f /tmp/\"${BASENAME_INIT_DB}\""
+        }
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          init_db "$NAMESPACE" "$DB_NAME" "$INIT_DB_FILE" "$DB_USER" "$DB_PASS"
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+        INIT_DB_FILE: ${{ inputs.db-init-file }}
+        DB_NAME: ${{ inputs.db-name }}
+        DB_USER: ${{ inputs.db-user }}
+        DB_PASS: ${{ env.DB_PASS }}

@@ -44,6 +44,10 @@ inputs:
     description: "DB init file (create DBs)"
     required: false
     default: '.github/actions/on-demand-env/create_db.sql'
+  source-namespace:
+    description: "Source namespace used to import secrets"
+    required: false
+    default: 'main'
 
 runs:
   using: 'composite'
@@ -224,4 +228,51 @@ runs:
         INIT_DB_FILE: ${{ inputs.db-init-file }}
         DB_NAME: ${{ inputs.db-name }}
         DB_USER: ${{ inputs.db-user }}
+        DB_PASS: ${{ env.DB_PASS }}
+
+    - name: Import secrets
+      shell: bash
+      run: |
+        # Import secrets that are managed by the bitnami operator
+        # $1: source namespace name
+        # $2: destination namespace name
+        # $3: postgres pass
+        import_secrets () {
+          echo "Import secrets..."
+          SOURCE_NAMESPACE=$1
+          DEST_NAMESPACE=$2
+          DB_PASS=$3
+          SECRET_LIST=($(kubectl -n "$SOURCE_NAMESPACE" get secret | grep -v cert | grep -v default-token | grep -v $DB_NAME.credentials.postgresql | awk '{print $1}' | grep -v NAME))
+
+          # Add wildcard-cert
+          SECRET_LIST+=("wildcard-cert")
+
+          for SECRET in "${SECRET_LIST[@]}"
+          do
+            echo "Import ${SECRET}..."
+            kubectl -n "$SOURCE_NAMESPACE" get secret -o yaml "$SECRET" > secret.yaml
+            sed -i "s/namespace: ${SOURCE_NAMESPACE}/namespace: ${DEST_NAMESPACE}/g" secret.yaml
+
+            # Patch secret password if DB credentials
+            if [[ $SECRET =~ "psql-credentials" ]]; then
+              sed -i "s/password: .*/password: ${DB_PASS}/g" secret.yaml
+            fi
+
+            # Delete ownerReferences from bitnami operator
+            sed -i '/ownerReferences/,+6d' secret.yaml
+
+            kubectl create -f secret.yaml
+          done
+
+          echo "Import secrets done"
+        }
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          import_secrets "$SOURCE_NAMESPACE" "$NAMESPACE" "$DB_PASS"
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+        SOURCE_NAMESPACE: ${{ inputs.source-namespace }}
+        DB_NAME: ${{ inputs.db-name }}
         DB_PASS: ${{ env.DB_PASS }}

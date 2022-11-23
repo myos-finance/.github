@@ -1,0 +1,30 @@
+apiVersion: "acid.zalan.do/v1"
+kind: postgresql
+metadata:
+  name: #DB_NAME#
+  namespace: #NAMESPACE_NAME#
+spec:
+  teamId: "myos"
+  volume:
+    size: #DB_SIZE#
+  numberOfInstances: 1
+  users:
+    postgres:
+    - superuser
+    - createdb
+  patroni:
+    initdb:
+    pg_hba:
+    - host    all             all             0.0.0.0/0          md5
+    - local   all             all                                trust
+    - hostssl all             +zalandos       127.0.0.1/32       pam
+    - host    all             all             127.0.0.1/32       md5
+    - hostssl all             +zalandos       ::1/128            pam
+    - host    all             all             ::1/128            md5
+    - local   replication     standby                            trust
+    - hostssl replication     standby all                        md5
+    - hostnossl all           all                10.0.0.0/8      trust
+    - hostssl all             +zalandos          all             pam
+    - hostssl all             all                all             md5
+  postgresql:
+    version: "11"

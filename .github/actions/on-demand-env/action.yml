@@ -20,6 +20,18 @@ inputs:
     description: "Region of the cluster to deploy to"
     required: false
     default: 'europe-west3'
+  db-name:
+    description: "Name of the deployed DB"
+    required: false
+    default: 'myos-dev-db'
+  db-size:
+    description: "Size of the deployed DB"
+    required: false
+    default: '1Gi'
+  db-template:
+    description: "Path to the DB template (postgresql operator)"
+    required: false
+    default: '.github/actions/on-demand-env/postgres_db_template.yaml'
 
 runs:
   using: 'composite'
@@ -94,14 +106,10 @@ runs:
           DB_NAME=$3
           DB_SIZE=$4
 
-          pwd
-          ls -la
-          ls -la .github
-          ls -la .github/actions/on-demand-env/postgres_db_template.yaml
           cp $DB_TEMPLATE_FILE new_db.yaml
-          sed -i '' "s/#NAMESPACE_NAME#/${NAMESPACE}/" new_db.yaml
-          sed -i '' "s/#DB_NAME#/${DB_NAME}/" new_db.yaml
-          sed -i '' "s/#DB_SIZE#/${DB_SIZE}/" new_db.yaml
+          sed -i "s/#NAMESPACE_NAME#/${NAMESPACE}/" new_db.yaml
+          sed -i "s/#DB_NAME#/${DB_NAME}/" new_db.yaml
+          sed -i "s/#DB_SIZE#/${DB_SIZE}/" new_db.yaml
           kubectl create -f new_db.yaml
         }
 

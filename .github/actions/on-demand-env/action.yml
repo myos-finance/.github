@@ -36,6 +36,10 @@ inputs:
     description: "Timeout to have the DB running (in seconds)"
     required: false
     default: '60'
+  db-user:
+    description: "DB admin user"
+    required: false
+    default: 'postgres'
 
 runs:
   using: 'composite'
@@ -169,3 +173,17 @@ runs:
         COUNT_NS: ${{ env.COUNT_NS }}
         DB_NAME: ${{ inputs.db-name }}
         TIMEOUT: ${{ inputs.db-create-timeout }}
+
+    - name: Get DB pass
+      shell: bash
+      run: |
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          DB_PASS=$(kubectl -n "$NAMESPACE" get secret ${DB_USER}.${DB_NAME}.credentials.postgresql.acid.zalan.do -o=jsonpath='{.data.password}')
+          echo "DB_PASS=$DB_PASS" >> $GITHUB_ENV
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+        DB_USER: ${{ inputs.db-user }}
+        DB_NAME: ${{ inputs.db-name }}

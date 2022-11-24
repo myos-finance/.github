@@ -426,3 +426,26 @@ runs:
       env:
         NAMESPACE: ${{ env.NAMESPACE }}
         TIMEOUT_PODS: ${{ inputs.pod-timeout }}
+
+    - name: Unsuspend cronjobs
+      shell: bash
+      run: |
+        # Unsuspend all cronjobs in namespace
+        # $1: namespace name
+        # $2: source namespace name
+        unsuspend_cronjob () {
+          echo "Suspend cronjobs..."
+          NAMESPACE=$1
+          SOURCE_NAMESPACE=$2
+
+          CRONJOB_LIST=($(kubectl -n "$SOURCE_NAMESPACE" get cronjob |  awk '{print $1}' | grep -v NAME))
+          for CRONJOB in "${CRONJOB_LIST[@]}"
+          do
+            echo "Unsuspend ${CRONJOB}..."
+            kubectl -n "$NAMESPACE" patch cronjobs "$CRONJOB" -p '{"spec" : {"suspend" : false }}'
+          done
+        }
+        unsuspend_cronjob "$NAMESPACE" "$SOURCE_NAMESPACE"
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        SOURCE_NAMESPACE: ${{ inputs.source-namespace }}

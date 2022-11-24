@@ -351,3 +351,33 @@ runs:
         NAMESPACE: ${{ env.NAMESPACE }}
         DB_NAME: ${{ inputs.db-name }}
         EXCLUDED_APPS: ${{ inputs.excluded-apps }}
+
+    - name: Suspend cronjobs
+      shell: bash
+      run: |
+        # Suspend all cronjobs in namespace
+        # $1: namespace name
+        # $2: source namespace name
+        suspend_cronjob () {
+          echo "Suspend cronjobs..."
+          NAMESPACE=$1
+          SOURCE_NAMESPACE=$2
+
+          CRONJOB_LIST=($(kubectl -n "$SOURCE_NAMESPACE" get cronjob |  awk '{print $1}' | grep -v NAME))
+          for CRONJOB in "${CRONJOB_LIST[@]}"
+          do
+            echo "Suspend ${CRONJOB}..."
+            kubectl -n "$NAMESPACE" patch cronjobs "$CRONJOB" -p '{"spec" : {"suspend" : true }}'
+          done
+
+          # Delete if jobs already triggered
+          COUNT_JOB=$(kubectl -n $NAMESPACE get job |  wc -l | xargs)
+          if [[ $COUNT_JOB -ne 0 ]]
+          then
+            kubectl -n "$NAMESPACE" delete jobs `kubectl -n "$NAMESPACE" get jobs -o custom-columns=:.metadata.name`
+          fi
+        }
+        suspend_cronjob "$NAMESPACE" "$SOURCE_NAMESPACE"
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        SOURCE_NAMESPACE: ${{ inputs.source-namespace }}

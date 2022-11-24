@@ -59,6 +59,10 @@ inputs:
     description: "Excluded apps from on demand environments"
     required: false
     default: 'argo-out-of-sync argocd kube-prometheus letsencrypt-issuer n8n postgres-operator'
+  pod-timeout:
+    description: "Timeout to have the pods running (in seconds)"
+    required: false
+    default: '900'
 
 runs:
   using: 'composite'
@@ -381,3 +385,44 @@ runs:
       env:
         NAMESPACE: ${{ env.NAMESPACE }}
         SOURCE_NAMESPACE: ${{ inputs.source-namespace }}
+
+    - name: Check env
+      shell: bash
+      run: |
+        # Check environment
+        # $1: namespace name
+        # $2: timeout for pods to be in running state (in seconds)
+        check_env () {
+          echo "Check env..."
+          NAMESPACE=$1
+          TIMEOUT=$2
+
+          COUNT_POD_NOT_READY=0
+
+          while [[ $TIMEOUT -gt 0 ]]
+          do
+            sleep 15
+            echo "Retrying..."
+            # || true -> if grep does nt match anything, it returns non 0 exit status
+            PODS_STATUS=$(kubectl -n "$NAMESPACE" get pods | grep "0/1" || true)
+            COUNT_POD_NOT_READY=$(echo "$PODS_STATUS" | wc -l | xargs)
+            
+            if [[ "$COUNT_POD_NOT_READY" -eq 1 ]]; then
+              TIMEOUT=0
+            else
+              echo -e "$PODS_STATUS\n"
+              ((TIMEOUT=TIMEOUT-15))
+            fi
+          done
+
+          if [[ "$COUNT_POD_NOT_READY" -eq 1 ]]; then
+            echo "Pods are ready"
+          else
+            echo "Pods are not running, exiting..."
+            exit 1
+          fi
+        }
+        check_env "$NAMESPACE" "$TIMEOUT_PODS"
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        TIMEOUT_PODS: ${{ inputs.pod-timeout }}

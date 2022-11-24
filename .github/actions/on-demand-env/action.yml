@@ -34,7 +34,7 @@ inputs:
   db-template:
     description: "Path to the DB template (postgresql operator)"
     required: false
-    default: '.github/actions/on-demand-env/postgres_db_template.yaml'
+    default: '.github-repo/.github/actions/on-demand-env/postgres_db_template.yaml'
   db-create-timeout:
     description: "Timeout to have the DB running (in seconds)"
     required: false
@@ -46,7 +46,7 @@ inputs:
   db-init-file:
     description: "DB init file (create DBs)"
     required: false
-    default: '.github/actions/on-demand-env/create_db.sql'
+    default: '.github-repo/.github/actions/on-demand-env/create_db.sql'
   source-namespace:
     description: "Source namespace used to import secrets"
     required: false
@@ -68,6 +68,15 @@ runs:
       with:
         repository: 'myos-finance/.github'
         ref: 'dev-543-on-demand'
+        path: .github-repo
+
+    - name: Checkout gitops repository
+      uses: actions/checkout@v3
+      with:
+        repository: 'myos-finance/gitops'
+        ref: 'main'
+        path: 'gitops'
+        token: ${{ inputs.token }}
 
     - name: Set up kubectl
       uses: azure/setup-kubectl@v3
@@ -287,13 +296,6 @@ runs:
         SOURCE_NAMESPACE: ${{ inputs.source-namespace }}
         DB_NAME: ${{ inputs.db-name }}
         DB_PASS: ${{ env.DB_PASS }}
-
-    - name: Checkout gitops repository
-      uses: actions/checkout@v3
-      with:
-        repository: 'myos-finance/gitops'
-        ref: 'main'
-        token: ${{ inputs.token }}
 
     - name: Create environment
       shell: bash

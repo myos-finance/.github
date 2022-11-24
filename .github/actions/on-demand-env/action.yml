@@ -12,6 +12,9 @@ inputs:
   google-credentials:
     description: 'Google credentials (on-demand service account json file)'
     required: true
+  token:
+    description: "PAT token of the myos-ci user"
+    required: true
   cluster-name:
     description: "Name of the cluster to deploy to"
     required: false
@@ -48,11 +51,19 @@ inputs:
     description: "Source namespace used to import secrets"
     required: false
     default: 'main'
+  gitops-path:
+    description: "Path to gitops repo"
+    required: false
+    default: 'gitops'
+  excluded-apps:
+    description: "Excluded apps from on demand environments"
+    required: false
+    default: 'argo-out-of-sync argocd kube-prometheus letsencrypt-issuer n8n postgres-operator'
 
 runs:
   using: 'composite'
   steps:
-    - name: Checkout
+    - name: Checkout .github repository
       uses: actions/checkout@v3
       with:
         repository: 'myos-finance/.github'
@@ -276,3 +287,65 @@ runs:
         SOURCE_NAMESPACE: ${{ inputs.source-namespace }}
         DB_NAME: ${{ inputs.db-name }}
         DB_PASS: ${{ env.DB_PASS }}
+
+    - name: Checkout gitops repository
+      uses: actions/checkout@v3
+      with:
+        repository: 'myos-finance/gitops'
+        ref: 'main'
+        token: ${{ inputs.token }}
+
+    - name: Create environment
+      shell: bash
+      run: |
+        # Create environment
+        # $1: path to gitops
+        # $2: namespace name
+        # $3: db name
+        # $4: excluded apps
+        create_env () {
+          echo "Create env..."
+          GITOPS_PATH=$1
+          NAMESPACE=$2
+          DB_NAME=$3
+          EXCLUDED_APPS=$4
+          EXCLUDED_APP_ARR=($(echo $EXCLUDED_APPS | tr " " "\n"))
+
+          # Copy all conf
+          cp -R "${GITOPS_PATH}/environments/dev" "${GITOPS_PATH}/environments/$NAMESPACE"
+
+          # Remove uneeded apps
+          for APP in "${EXCLUDED_APP_ARR[@]}"
+          do
+            rm -rf "${GITOPS_PATH}/environments/${NAMESPACE}/${APP}"
+          done
+
+          # Patch namespace
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "kustomization.yaml" | xargs sed -i "s/namespace: main/namespace: ${NAMESPACE}/g"
+
+          # Patch ingress
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "ingress.yaml" | xargs sed -i "s/\(.*\).dev.myos.com/\1-${NAMESPACE}.dev.myos.com/g"
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "ingress.yaml" | xargs sed -i "/cert-manager.io\/cluster-issuer: letsencrypt/d"
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "ingress.yaml" | xargs sed -i "s/secretName: \(.*\)-cert/secretName: wildcard-cert/g"
+
+          # Get DB IP and patch DB
+          DB_HOST=$(kubectl -n "${NAMESPACE}" get svc "${DB_NAME}" | grep "${DB_NAME}" | awk '{print $3}')
+          
+          # Patch DB HOST
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "*envvars*.patch.yaml" | xargs sed -i "s/10.10.0.3/${DB_HOST}/g"
+
+          # Remove all secrets from kustomize conf
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "*-secret.yaml" | xargs rm
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "kustomization.yaml" | xargs sed -i "/.*secret.yaml/d"
+
+          # Create root kustomization file and apply
+          cd "${GITOPS_PATH}/environments/${NAMESPACE}"
+          kustomize create --autodetect --recursive
+          kustomize build | kubectl apply -f-
+        }
+        create_env "$GITOPS_PATH" "$NAMESPACE" "$DB_NAME" "$EXCLUDED_APPS"
+      env:
+        GITOPS_PATH: ${{ inputs.gitops-path }}
+        NAMESPACE: ${{ env.NAMESPACE }}
+        DB_NAME: ${{ inputs.db-name }}
+        EXCLUDED_APPS: ${{ inputs.excluded-apps }}

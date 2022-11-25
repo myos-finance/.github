@@ -71,7 +71,7 @@ runs:
       uses: actions/checkout@v3
       with:
         repository: 'myos-finance/.github'
-        ref: 'dev-543-on-demand'
+        ref: 'main'
         path: .github-repo
 
     - name: Checkout gitops repository

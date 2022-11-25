@@ -58,7 +58,7 @@ inputs:
   excluded-apps:
     description: "Excluded apps from on demand environments"
     required: false
-    default: 'argo-out-of-sync argocd kube-prometheus letsencrypt-issuer n8n postgres-operator'
+    default: 'argo-out-of-sync argocd clean-temp-ns kube-prometheus letsencrypt-issuer n8n postgres-operator'
   pod-timeout:
     description: "Timeout to have the pods running (in seconds)"
     required: false

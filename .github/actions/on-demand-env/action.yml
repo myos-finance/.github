@@ -1,0 +1,451 @@
+name: 'On demand environment action'
+
+description: 'Create on demand environment'
+
+inputs:
+  microservice:
+    description: "Specific microservice to be deployed"
+    required: true
+  branch:
+    description: "Branch to be deployed"
+    required: true
+  google-credentials:
+    description: 'Google credentials (on-demand service account json file)'
+    required: true
+  token:
+    description: "PAT token of the myos-ci user"
+    required: true
+  cluster-name:
+    description: "Name of the cluster to deploy to"
+    required: false
+    default: 'myos-dev'
+  cluster-region:
+    description: "Region of the cluster to deploy to"
+    required: false
+    default: 'europe-west3'
+  db-name:
+    description: "Name of the deployed DB"
+    required: false
+    default: 'myos-dev-db'
+  db-size:
+    description: "Size of the deployed DB"
+    required: false
+    default: '1Gi'
+  db-template:
+    description: "Path to the DB template (postgresql operator)"
+    required: false
+    default: '.github-repo/.github/actions/on-demand-env/postgres_db_template.yaml'
+  db-create-timeout:
+    description: "Timeout to have the DB running (in seconds)"
+    required: false
+    default: '60'
+  db-user:
+    description: "DB admin user"
+    required: false
+    default: 'postgres'
+  db-init-file:
+    description: "DB init file (create DBs)"
+    required: false
+    default: '.github-repo/.github/actions/on-demand-env/create_db.sql'
+  source-namespace:
+    description: "Source namespace used to import secrets"
+    required: false
+    default: 'main'
+  gitops-path:
+    description: "Path to gitops repo"
+    required: false
+    default: 'gitops'
+  excluded-apps:
+    description: "Excluded apps from on demand environments"
+    required: false
+    default: 'argo-out-of-sync argocd clean-temp-ns kube-prometheus letsencrypt-issuer n8n postgres-operator'
+  pod-timeout:
+    description: "Timeout to have the pods running (in seconds)"
+    required: false
+    default: '900'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout .github repository
+      uses: actions/checkout@v3
+      with:
+        repository: 'myos-finance/.github'
+        ref: 'main'
+        path: .github-repo
+
+    - name: Checkout gitops repository
+      uses: actions/checkout@v3
+      with:
+        repository: 'myos-finance/gitops'
+        ref: 'main'
+        path: 'gitops'
+        token: ${{ inputs.token }}
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+
+    - name: auth
+      uses: google-github-actions/auth@v0
+      with:
+        credentials_json: ${{ inputs.google-credentials }}
+
+    - name: setup gcloud
+      uses: google-github-actions/setup-gcloud@v0
+
+    - name: Pull kubernetes configuration
+      uses: 'google-github-actions/get-gke-credentials@v0'
+      with:
+        cluster_name: ${{ inputs.cluster-name }}
+        location: ${{ inputs.cluster-region }}
+
+    - name: Get namespace
+      shell: bash
+      run: |
+        NAMESPACE=$(echo "temp-${MICROSERVICE}-${BRANCH}" | cut -c-63 | tr '[:upper:]' '[:lower:]')
+        echo "NAMESPACE=$NAMESPACE" >> $GITHUB_ENV
+      env:
+        MICROSERVICE: ${{ inputs.microservice }}
+        BRANCH: ${{ inputs.branch }}
+
+    - name: Count namespace
+      shell: bash
+      run: |
+        # Check if namespace exists
+        ## || true to bypass grep exit status > 0 when not matching -> https://stackoverflow.com/questions/57788813/grep-return-0-if-no-match
+        COUNT_NS=$(kubectl get namespace | grep "$NAMESPACE" | awk '{print $1}' | grep -E "^$NAMESPACE$" | wc -l | xargs || true)
+        echo "COUNT_NS=$COUNT_NS" >> $GITHUB_ENV
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+
+    - name: Create namespace
+      shell: bash
+      run: |
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          echo "Creating namespace ${NAMESPACE}..."
+          kubectl create namespace "$NAMESPACE"
+          kubectl label namespaces "$NAMESPACE" cleanup=true --overwrite=true
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+
+    - name: Create DB instance
+      shell: bash
+      run: |
+        # Create DB instance
+        # $1: template file path
+        # $2: namespace name
+        # $3: db name
+        # $4: db size
+        create_db_instance () {
+          echo "Creating DB instance..."
+          DB_TEMPLATE_FILE=$1
+          NAMESPACE=$2
+          DB_NAME=$3
+          DB_SIZE=$4
+
+          cp $DB_TEMPLATE_FILE new_db.yaml
+          sed -i "s/#NAMESPACE_NAME#/${NAMESPACE}/" new_db.yaml
+          sed -i "s/#DB_NAME#/${DB_NAME}/" new_db.yaml
+          sed -i "s/#DB_SIZE#/${DB_SIZE}/" new_db.yaml
+          kubectl create -f new_db.yaml
+        }
+
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          create_db_instance "$DB_TEMPLATE_FILE" "$NAMESPACE" "$DB_NAME" "$DB_SIZE"
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+        DB_NAME: ${{ inputs.db-name }}
+        DB_SIZE: ${{ inputs.db-size }}
+        DB_TEMPLATE_FILE: ${{ inputs.db-template }}
+
+    - name: Check DB instance
+      shell: bash
+      run: |
+        # Check DB
+        # $1: namespace name
+        # $2: db name
+        # $3: timeout (in seconds)
+        check_db () {
+          echo "Checking DB status..."
+          NAMESPACE=$1
+          DB_NAME=$2
+          TIMEOUT=$3
+
+          while [ $TIMEOUT -gt 0 ]
+          do
+            sleep 10
+            echo "Retrying..."
+            DB_STATUS=$(kubectl -n "$NAMESPACE" get pod ${DB_NAME}-0 --output="jsonpath={.status.containerStatuses[*].ready}")
+            if [[ "$DB_STATUS" == "true" ]]; then
+              TIMEOUT=0
+            else
+              ((TIMEOUT=TIMEOUT-10))
+            fi
+          done
+
+          if [[ "$DB_STATUS" != "true" ]]; then
+            echo "DB is not ready, exiting..."
+            exit 1
+          else
+            echo "DB is ready"
+          fi
+        }
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          check_db "$NAMESPACE" "$DB_NAME" "$TIMEOUT"
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+        DB_NAME: ${{ inputs.db-name }}
+        TIMEOUT: ${{ inputs.db-create-timeout }}
+
+    - name: Get DB pass
+      shell: bash
+      run: |
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          DB_PASS=$(kubectl -n "$NAMESPACE" get secret ${DB_USER}.${DB_NAME}.credentials.postgresql.acid.zalan.do -o=jsonpath='{.data.password}')
+          echo "DB_PASS=$DB_PASS" >> $GITHUB_ENV
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+        DB_USER: ${{ inputs.db-user }}
+        DB_NAME: ${{ inputs.db-name }}
+
+    - name: Init DB
+      shell: bash
+      run: |
+        # Init DB
+        # $1: namespace name
+        # $2: db name
+        # $3: init db file
+        # $4: db user
+        # $5: db pass
+        init_db () {
+          echo "Init DB..."
+          NAMESPACE=$1
+          DB_NAME=$2
+          INIT_DB_FILE=$3
+          DB_USER=$4
+          DB_PASS=$5
+          DECRYPTED_DB_PASS=$(echo "$DB_PASS" | base64 -d)
+          BASENAME_INIT_DB=$(basename $INIT_DB_FILE)
+
+          kubectl -n "$NAMESPACE" cp "$INIT_DB_FILE" "${DB_NAME}-0:/tmp"
+          kubectl -n "$NAMESPACE" exec -i "${DB_NAME}-0" -- sh -c "export PGPASSWORD=\"${DECRYPTED_DB_PASS}\" && psql -U \"${DB_USER}\" -h localhost -a -f /tmp/\"${BASENAME_INIT_DB}\""
+        }
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          init_db "$NAMESPACE" "$DB_NAME" "$INIT_DB_FILE" "$DB_USER" "$DB_PASS"
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+        INIT_DB_FILE: ${{ inputs.db-init-file }}
+        DB_NAME: ${{ inputs.db-name }}
+        DB_USER: ${{ inputs.db-user }}
+        DB_PASS: ${{ env.DB_PASS }}
+
+    - name: Import secrets
+      shell: bash
+      run: |
+        # Import secrets that are managed by the bitnami operator
+        # $1: source namespace name
+        # $2: destination namespace name
+        # $3: postgres pass
+        import_secrets () {
+          echo "Import secrets..."
+          SOURCE_NAMESPACE=$1
+          DEST_NAMESPACE=$2
+          DB_PASS=$3
+          SECRET_LIST=($(kubectl -n "$SOURCE_NAMESPACE" get secret | grep -v cert | grep -v default-token | grep -v $DB_NAME.credentials.postgresql | awk '{print $1}' | grep -v NAME))
+
+          # Add wildcard-cert
+          SECRET_LIST+=("wildcard-cert")
+
+          for SECRET in "${SECRET_LIST[@]}"
+          do
+            echo "Import ${SECRET}..."
+            kubectl -n "$SOURCE_NAMESPACE" get secret -o yaml "$SECRET" > secret.yaml
+            sed -i "s/namespace: ${SOURCE_NAMESPACE}/namespace: ${DEST_NAMESPACE}/g" secret.yaml
+
+            # Patch secret password if DB credentials
+            if [[ $SECRET =~ "psql-credentials" ]]; then
+              sed -i "s/password: .*/password: ${DB_PASS}/g" secret.yaml
+            fi
+
+            # Delete ownerReferences from bitnami operator
+            sed -i '/ownerReferences/,+6d' secret.yaml
+
+            kubectl create -f secret.yaml
+          done
+
+          echo "Import secrets done"
+        }
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          import_secrets "$SOURCE_NAMESPACE" "$NAMESPACE" "$DB_PASS"
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+        SOURCE_NAMESPACE: ${{ inputs.source-namespace }}
+        DB_NAME: ${{ inputs.db-name }}
+        DB_PASS: ${{ env.DB_PASS }}
+
+    - name: Create environment
+      shell: bash
+      run: |
+        # Create environment
+        # $1: path to gitops
+        # $2: namespace name
+        # $3: db name
+        # $4: excluded apps
+        create_env () {
+          echo "Create env..."
+          GITOPS_PATH=$1
+          NAMESPACE=$2
+          DB_NAME=$3
+          EXCLUDED_APPS=$4
+          EXCLUDED_APP_ARR=($(echo $EXCLUDED_APPS | tr " " "\n"))
+
+          # Copy all conf
+          cp -R "${GITOPS_PATH}/environments/dev" "${GITOPS_PATH}/environments/$NAMESPACE"
+
+          # Remove uneeded apps
+          for APP in "${EXCLUDED_APP_ARR[@]}"
+          do
+            rm -rf "${GITOPS_PATH}/environments/${NAMESPACE}/${APP}"
+          done
+
+          # Patch namespace
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "kustomization.yaml" | xargs sed -i "s/namespace: main/namespace: ${NAMESPACE}/g"
+
+          # Patch ingress
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "ingress.yaml" | xargs sed -i "s/\(.*\).dev.myos.com/\1-${NAMESPACE}.dev.myos.com/g"
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "ingress.yaml" | xargs sed -i "/cert-manager.io\/cluster-issuer: letsencrypt/d"
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "ingress.yaml" | xargs sed -i "s/secretName: \(.*\)-cert/secretName: wildcard-cert/g"
+
+          # Get DB IP and patch DB
+          DB_HOST=$(kubectl -n "${NAMESPACE}" get svc "${DB_NAME}" | grep "${DB_NAME}" | awk '{print $3}')
+          
+          # Patch DB HOST
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "*envvars*.patch.yaml" | xargs sed -i "s/10.10.0.3/${DB_HOST}/g"
+
+          # Remove all secrets from kustomize conf
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "*-secret.yaml" | xargs rm
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "kustomization.yaml" | xargs sed -i "/.*secret.yaml/d"
+
+          # Create root kustomization file and apply
+          cd "${GITOPS_PATH}/environments/${NAMESPACE}"
+          kustomize create --autodetect --recursive
+          kustomize build | kubectl apply -f-
+        }
+        create_env "$GITOPS_PATH" "$NAMESPACE" "$DB_NAME" "$EXCLUDED_APPS"
+      env:
+        GITOPS_PATH: ${{ inputs.gitops-path }}
+        NAMESPACE: ${{ env.NAMESPACE }}
+        DB_NAME: ${{ inputs.db-name }}
+        EXCLUDED_APPS: ${{ inputs.excluded-apps }}
+
+    - name: Suspend cronjobs
+      shell: bash
+      run: |
+        # Suspend all cronjobs in namespace
+        # $1: namespace name
+        # $2: source namespace name
+        suspend_cronjob () {
+          echo "Suspend cronjobs..."
+          NAMESPACE=$1
+          SOURCE_NAMESPACE=$2
+
+          CRONJOB_LIST=($(kubectl -n "$SOURCE_NAMESPACE" get cronjob |  awk '{print $1}' | grep -v NAME))
+          for CRONJOB in "${CRONJOB_LIST[@]}"
+          do
+            echo "Suspend ${CRONJOB}..."
+            kubectl -n "$NAMESPACE" patch cronjobs "$CRONJOB" -p '{"spec" : {"suspend" : true }}'
+          done
+
+          # Delete if jobs already triggered
+          COUNT_JOB=$(kubectl -n $NAMESPACE get job |  wc -l | xargs)
+          if [[ $COUNT_JOB -ne 0 ]]
+          then
+            kubectl -n "$NAMESPACE" delete jobs `kubectl -n "$NAMESPACE" get jobs -o custom-columns=:.metadata.name`
+          fi
+        }
+        suspend_cronjob "$NAMESPACE" "$SOURCE_NAMESPACE"
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        SOURCE_NAMESPACE: ${{ inputs.source-namespace }}
+
+    - name: Check env
+      shell: bash
+      run: |
+        # Check environment
+        # $1: namespace name
+        # $2: timeout for pods to be in running state (in seconds)
+        check_env () {
+          echo "Check env..."
+          NAMESPACE=$1
+          TIMEOUT=$2
+
+          COUNT_POD_NOT_READY=0
+
+          while [[ $TIMEOUT -gt 0 ]]
+          do
+            sleep 15
+            echo "Retrying..."
+            # || true -> if grep does nt match anything, it returns non 0 exit status
+            PODS_STATUS=$(kubectl -n "$NAMESPACE" get pods | grep "0/1" || true)
+            COUNT_POD_NOT_READY=$(echo "$PODS_STATUS" | wc -l | xargs)
+            
+            if [[ "$COUNT_POD_NOT_READY" -eq 1 ]]; then
+              TIMEOUT=0
+            else
+              echo -e "$PODS_STATUS\n"
+              ((TIMEOUT=TIMEOUT-15))
+            fi
+          done
+
+          if [[ "$COUNT_POD_NOT_READY" -eq 1 ]]; then
+            echo "Pods are ready"
+          else
+            echo "Pods are not running, exiting..."
+            exit 1
+          fi
+        }
+        check_env "$NAMESPACE" "$TIMEOUT_PODS"
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        TIMEOUT_PODS: ${{ inputs.pod-timeout }}
+
+    - name: Unsuspend cronjobs
+      shell: bash
+      run: |
+        # Unsuspend all cronjobs in namespace
+        # $1: namespace name
+        # $2: source namespace name
+        unsuspend_cronjob () {
+          echo "Suspend cronjobs..."
+          NAMESPACE=$1
+          SOURCE_NAMESPACE=$2
+
+          CRONJOB_LIST=($(kubectl -n "$SOURCE_NAMESPACE" get cronjob |  awk '{print $1}' | grep -v NAME))
+          for CRONJOB in "${CRONJOB_LIST[@]}"
+          do
+            echo "Unsuspend ${CRONJOB}..."
+            kubectl -n "$NAMESPACE" patch cronjobs "$CRONJOB" -p '{"spec" : {"suspend" : false }}'
+          done
+        }
+        unsuspend_cronjob "$NAMESPACE" "$SOURCE_NAMESPACE"
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        SOURCE_NAMESPACE: ${{ inputs.source-namespace }}

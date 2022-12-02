@@ -29,6 +29,14 @@ runs:
         TAG=$(echo "${GITHUB_REF#refs/tags/}" | sed -e 's,^v,,')
         echo "_VERSION=$TAG" >> $GITHUB_ENV
 
+    - name: Generate tag using PR
+      shell: bash
+      if: ${{ inputs.image-tag-using == 'pr' }}
+      run: |
+        BRANCH='${{ github.event.pull_request.head.ref }}'
+        COMMIT_HASH_SHORT=$(git rev-parse --short "$BRANCH")
+        echo "_VERSION=$(echo $BRANCH'_'$COMMIT_HASH_SHORT)" >> $GITHUB_ENV
+
     - name: Detect environment
       shell: bash
       run: |
@@ -39,7 +47,7 @@ runs:
         elif [[ $_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)$ ]]; then
           echo "DEPLOYMENT_ENV=staging" >> $GITHUB_ENV
         else
-          echo "DEPLOYMENT_ENV=test" >> $GITHUB_ENV
+          echo "DEPLOYMENT_ENV=on-demand" >> $GITHUB_ENV
         fi
 
     - name: Set env vars

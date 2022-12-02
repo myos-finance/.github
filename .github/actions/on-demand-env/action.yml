@@ -15,6 +15,9 @@ inputs:
   token:
     description: "PAT token of the myos-ci user"
     required: true
+  labels:
+    description: "Labels of the PR"
+    required: true
   cluster-name:
     description: "Name of the cluster to deploy to"
     required: false

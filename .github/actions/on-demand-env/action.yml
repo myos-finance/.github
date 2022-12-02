@@ -6,6 +6,9 @@ inputs:
   microservice:
     description: "Specific microservice to be deployed"
     required: true
+  version:
+    description: "Specific version to be deployed"
+    required: true
   branch:
     description: "Branch to be deployed"
     required: true
@@ -354,6 +357,17 @@ runs:
         DB_NAME: ${{ inputs.db-name }}
         EXCLUDED_APPS: ${{ inputs.excluded-apps }}
 
+    - name: Deploy specific microservice version
+      shell: bash
+      run: |
+        # Deploy latest image of the branch microservice for which on-demand environment was triggered
+        sed -i "s/newTag: \(.*\)/newTag: $VERSION/" "${GITOPS_PATH}/environments/${NAMESPACE}/${MICROSERVICE}/kustomization.yaml"
+      env:
+        GITOPS_PATH: ${{ inputs.gitops-path }}
+        NAMESPACE: ${{ env.NAMESPACE }}
+        MICROSERVICE: ${{ inputs.microservice }}
+        VERSION: ${{ inputs.version }}
+
     - name: Apply manifests
       shell: bash
       run: |
@@ -361,6 +375,9 @@ runs:
         cd "${GITOPS_PATH}/environments/${NAMESPACE}"
         kustomize create --autodetect --recursive
         kustomize build | kubectl apply -f-
+      env:
+        GITOPS_PATH: ${{ inputs.gitops-path }}
+        NAMESPACE: ${{ env.NAMESPACE }}
 
     - name: Suspend cronjobs
       shell: bash

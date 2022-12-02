@@ -346,11 +346,6 @@ runs:
           # Remove all secrets from kustomize conf
           find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "*-secret.yaml" | xargs rm
           find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "kustomization.yaml" | xargs sed -i "/.*secret.yaml/d"
-
-          # Create root kustomization file and apply
-          cd "${GITOPS_PATH}/environments/${NAMESPACE}"
-          kustomize create --autodetect --recursive
-          kustomize build | kubectl apply -f-
         }
         create_env "$GITOPS_PATH" "$NAMESPACE" "$DB_NAME" "$EXCLUDED_APPS"
       env:
@@ -358,6 +353,14 @@ runs:
         NAMESPACE: ${{ env.NAMESPACE }}
         DB_NAME: ${{ inputs.db-name }}
         EXCLUDED_APPS: ${{ inputs.excluded-apps }}
+
+    - name: Apply manifests
+      shell: bash
+      run: |
+        # Create root kustomization file and apply
+        cd "${GITOPS_PATH}/environments/${NAMESPACE}"
+        kustomize create --autodetect --recursive
+        kustomize build | kubectl apply -f-
 
     - name: Suspend cronjobs
       shell: bash

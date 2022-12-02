@@ -362,11 +362,23 @@ runs:
       run: |
         # Deploy latest image of the branch microservice for which on-demand environment was triggered
         sed -i "s/newTag: \(.*\)/newTag: $VERSION/" "${GITOPS_PATH}/environments/${NAMESPACE}/${MICROSERVICE}/kustomization.yaml"
+
+        # Deploy all the fixed versions with labels microservice:version
+        LABEL_ARR=($(echo $LABELS))
+        for LABEL in "${LABEL_ARR[@]}"; do
+          if [[ "$LABEL" =~ ^\".*:.*\"$ ]]; 
+          then 
+            MS=$(echo "${LABEL//\"}" | cut -d ':' -f 1)
+            MS_VERSION=$(echo "${LABEL//\"}" | cut -d ':' -f 2)
+            sed -i "s/newTag: \(.*\)/newTag: $MS_VERSION/" "${GITOPS_PATH}/environments/${NAMESPACE}/${MS}/kustomization.yaml"
+          fi
+        done
       env:
         GITOPS_PATH: ${{ inputs.gitops-path }}
         NAMESPACE: ${{ env.NAMESPACE }}
         MICROSERVICE: ${{ inputs.microservice }}
         VERSION: ${{ inputs.version }}
+        LABELS: ${{ inputs.labels }}
 
     - name: Apply manifests
       shell: bash

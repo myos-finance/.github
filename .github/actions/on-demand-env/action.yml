@@ -501,6 +501,14 @@ runs:
           kubectl -n "$NAMESPACE" annotate ingress backoffice-frontend nginx.ingress.kubernetes.io/auth-realm='Authentication Required - on demand'
         }
 
+        # Suspend unneeded deployment-restart that requires a service account with too many perms for on demand
+        # $1: namespace name
+        suspend_deployment_restart () {
+          echo "Suspend deployment restart..."
+          kubectl -n "$NAMESPACE" patch cronjobs deployment-restart -p '{"spec" : {"suspend" : true }}'
+        }
+
         bofe_basic_auth "$NAMESPACE"
+        suspend_deployment_restart "$NAMESPACE"
       env:
         NAMESPACE: ${{ env.NAMESPACE }}

@@ -484,3 +484,31 @@ runs:
       env:
         NAMESPACE: ${{ env.NAMESPACE }}
         SOURCE_NAMESPACE: ${{ inputs.source-namespace }}
+
+    - name: Post configurations
+      shell: bash
+      run: |
+        # This part should stay minimal and we should avoid it as much as possible
+        # as it's hard to maintain on the long run
+
+        # Patch backoffice-frontend ingress to add basic auth
+        # $1: namespace name
+        bofe_basic_auth () {
+          echo "Add basic auth for BOFE..."
+          NAMESPACE=$1
+          kubectl -n "$NAMESPACE" annotate ingress backoffice-frontend nginx.ingress.kubernetes.io/auth-type=basic
+          kubectl -n "$NAMESPACE" annotate ingress backoffice-frontend nginx.ingress.kubernetes.io/auth-secret=backoffice-frontend-on-demand-auth
+          kubectl -n "$NAMESPACE" annotate ingress backoffice-frontend nginx.ingress.kubernetes.io/auth-realm='Authentication Required - on demand'
+        }
+
+        # Suspend unneeded deployment-restart that requires a service account with too many perms for on demand
+        # $1: namespace name
+        suspend_deployment_restart () {
+          echo "Suspend deployment restart..."
+          kubectl -n "$NAMESPACE" patch cronjobs deployment-restart -p '{"spec" : {"suspend" : true }}'
+        }
+
+        bofe_basic_auth "$NAMESPACE"
+        suspend_deployment_restart "$NAMESPACE"
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}

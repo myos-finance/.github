@@ -496,9 +496,9 @@ runs:
         bofe_basic_auth () {
           echo "Add basic auth for BOFE..."
           NAMESPACE=$1
-          kubectl -n "$NAMESPACE" annotate ingress backoffice-frontend nginx.ingress.kubernetes.io/auth-type=basic
-          kubectl -n "$NAMESPACE" annotate ingress backoffice-frontend nginx.ingress.kubernetes.io/auth-secret=backoffice-frontend-on-demand-auth
-          kubectl -n "$NAMESPACE" annotate ingress backoffice-frontend nginx.ingress.kubernetes.io/auth-realm='Authentication Required - on demand'
+          kubectl -n "$NAMESPACE" annotate ingress backoffice-frontend nginx.ingress.kubernetes.io/auth-type=basic --overwrite
+          kubectl -n "$NAMESPACE" annotate ingress backoffice-frontend nginx.ingress.kubernetes.io/auth-secret=backoffice-frontend-on-demand-auth --overwrite
+          kubectl -n "$NAMESPACE" annotate ingress backoffice-frontend nginx.ingress.kubernetes.io/auth-realm='Authentication Required - on demand' --overwrite
         }
 
         # Suspend unneeded deployment-restart that requires a service account with too many perms for on demand

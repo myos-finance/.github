@@ -9,6 +9,10 @@ inputs:
   gcloud-credentials:
     description: "Credentials corresponding to the service account (json)"
     required: true
+  build-args:
+    description: "Build args for the docker image"
+    required: false
+    default: ''
 
 runs:
   using: "composite"
@@ -38,7 +42,15 @@ runs:
     # Build the Docker image
     - name: Build
       shell: bash
-      run: docker build --build-arg APP_VERSION=$VERSION -t image .
+      run: |
+        if [[ "$BUILD_ARGS" == "" ]]; then
+          docker build --build-arg APP_VERSION=$VERSION -t image .
+        else
+          docker_cmd="docker build $BUILD_ARGS -t image ."
+          $docker_cmd
+        fi
+      env:
+        BUILD_ARGS: "${{ inputs.build-args }}"
 
     # Push the Docker image to Google Container Registry
     - name: Publish

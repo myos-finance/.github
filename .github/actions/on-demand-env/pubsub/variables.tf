@@ -1,6 +1,6 @@
 variable "gcp_project" {
   type    = string
-  default = "amalendo-de-dev-dummy"
+  default = "amalendo-de-dev"
 }
 
 variable "gcp_region" {

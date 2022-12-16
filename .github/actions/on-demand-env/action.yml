@@ -65,6 +65,14 @@ inputs:
     description: "Path to gitops repo"
     required: false
     default: 'gitops'
+  tf-pubsub-path:
+    description: "Path to tf-pubsub module"
+    required: false
+    default: 'pubsub'
+  tf-pubsub-module-path:
+    description: "Path to tf-pubsub module"
+    required: false
+    default: 'tf-pubsub'
   excluded-apps:
     description: "Excluded apps from on demand environments"
     required: false
@@ -90,6 +98,14 @@ runs:
         repository: 'myos-finance/gitops'
         ref: 'main'
         path: 'gitops'
+        token: ${{ inputs.token }}
+
+    - name: Checkout tf-pubsub repository
+      uses: actions/checkout@v3
+      with:
+        repository: 'myos-finance/tf-pubsub'
+        ref: 'main'
+        path: 'tf-pubsub'
         token: ${{ inputs.token }}
 
     - name: Set up kubectl
@@ -435,6 +451,30 @@ runs:
         NAMESPACE: ${{ env.NAMESPACE }}
         COUNT_NS: ${{ env.COUNT_NS }}
         TIMEOUT: ${{ inputs.pubsub-create-timeout }}
+
+    - name: Create pub/sub config
+      shell: bash
+      run: |
+        # Create pub/sub config
+        # $1: namespace
+        # $2: path to tf pubsub module
+        create_pubsub_config () {
+          echo "Create pubsub config..."
+          NAMESPACE=$1
+          TF_PUBSUB_MODULE_PATH=$2
+          # Remove message duration in topics/subs
+          sed -i '/message_retention_duration/d' ${TF_PUBSUB_MODULE_PATH}/pub.tf
+          sed -i '/message_retention_duration/d' ${TF_PUBSUB_MODULE_PATH}/sub.tf
+
+          # Remove enable once delivery
+          sed -i '/enable_exactly_once_delivery/d' ${TF_PUBSUB_MODULE_PATH}/sub.tf
+        }
+
+        create_pubsub_config "$NAMESPACE" "$TF_PUBSUB_MODULE_PATH"
+      env:
+        TF_PUBSUB_PATH: ${{ inputs.tf-pubsub-path }}
+        TF_PUBSUB_MODULE_PATH: ${{ inputs.tf-pubsub-module-path }}
+        NAMESPACE: ${{ env.NAMESPACE }}  
 
     - name: Apply manifests
       shell: bash

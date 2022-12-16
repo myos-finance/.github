@@ -57,6 +57,10 @@ inputs:
     description: "Timeout to have the pubsub instance running (in seconds)"
     required: false
     default: '60'
+  pubsub-template:
+    description: "Path to the pubsub template (terraform config)"
+    required: false
+    default: '.github-repo/.github/actions/on-demand-env/pubsub'
   source-namespace:
     description: "Source namespace used to import secrets"
     required: false
@@ -462,19 +466,38 @@ runs:
           echo "Create pubsub config..."
           NAMESPACE=$1
           TF_PUBSUB_MODULE_PATH=$2
-          # Remove message duration in topics/subs
+
+          # Remove message duration in topics/subs, not supported by the pubsub emulator
           sed -i '/message_retention_duration/d' ${TF_PUBSUB_MODULE_PATH}/pub.tf
           sed -i '/message_retention_duration/d' ${TF_PUBSUB_MODULE_PATH}/sub.tf
 
-          # Remove enable once delivery
+          # Remove enable once delivery, not supported by the pubsub emulator
           sed -i '/enable_exactly_once_delivery/d' ${TF_PUBSUB_MODULE_PATH}/sub.tf
         }
 
         create_pubsub_config "$NAMESPACE" "$TF_PUBSUB_MODULE_PATH"
       env:
-        TF_PUBSUB_PATH: ${{ inputs.tf-pubsub-path }}
         TF_PUBSUB_MODULE_PATH: ${{ inputs.tf-pubsub-module-path }}
-        NAMESPACE: ${{ env.NAMESPACE }}  
+        NAMESPACE: ${{ env.NAMESPACE }}
+
+    - name: Open port forwarding
+      shell: bash
+      run: |
+        # Open port-forwarding to pubsub-emulator pod
+        kubectl -n "$NAMESPACE" port-forward svc/pubsub-emulator 8085:8085 1>/dev/null 2>&1 &
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+
+    - name: Apply pubsub config
+      shell: bash
+      run: |
+        # Copy pubsub config and apply it with terraform
+        cp -R "${TF_TEMPLATE_FOLDER}" "$TF_PUBSUB_PATH"
+        terraform -chdir=$TF_PUBSUB_PATH init &&  terraform -chdir=$TF_PUBSUB_PATH apply -auto-approve
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        TF_PUBSUB_PATH: ${{ inputs.tf-pubsub-path }}
+        TF_TEMPLATE_FOLDER: ${{ inputs.pubsub-template }}
 
     - name: Apply manifests
       shell: bash

@@ -335,6 +335,18 @@ runs:
         DB_NAME: ${{ inputs.db-name }}
         DB_PASS: ${{ env.DB_PASS }}
 
+    - name: Patch default service account
+      shell: bash
+      run: |
+        # Allow pull from our GCR repository by patching default service account with imagePullSecrets
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          kubectl -n "$NAMESPACE" patch serviceaccount default -p '{"imagePullSecrets": [{"name": "gcr-json-key"}]}'
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+
     - name: Create environment
       shell: bash
       run: |

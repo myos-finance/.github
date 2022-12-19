@@ -61,6 +61,10 @@ inputs:
     description: "Path to the pubsub template (terraform config)"
     required: false
     default: '.github-repo/.github/actions/on-demand-env/pubsub'
+  pubsub-address:
+    description: "Pubsub emulator addess"
+    required: false
+    default: 'pubsub-emulator:8085'
   source-namespace:
     description: "Source namespace used to import secrets"
     required: false
@@ -373,6 +377,20 @@ runs:
           # Remove all secrets from kustomize conf
           find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "*-secret.yaml" | xargs rm
           find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "kustomization.yaml" | xargs sed -i "/.*secret.yaml/d"
+
+          # Patch pubsub to point to emulator
+          # Get all applications using pubsub
+          PUBSUB_APPS=($(grep -rnw "${GITOPS_PATH}/applications/" -e '.*sa-pubsub.*' | awk '{print $1}' | sed 's/gitops\/applications\/\(.*\)\/.*/\1/' | uniq | xargs))
+
+          # For each app, find all envvars files and patch
+          for APP in ${PUBSUB_APPS[@]}
+          do
+            FILES_TO_PATCH=($(find "${GITOPS_PATH}/environments/${NAMESPACE}/${APP}" -name 'envvars*'))
+            for ENVARS_FILE in ${FILES_TO_PATCH[@]}
+            do
+              yq -i ".spec.template.spec.containers[0].env += [{ \"name\": \"PUBSUB_EMULATOR_HOST\", \"value\": \"${PUBSUB_ADDRESS}\" }]" "$ENVARS_FILE"
+            done
+          done
         }
         create_env "$GITOPS_PATH" "$NAMESPACE" "$DB_NAME" "$EXCLUDED_APPS"
       env:
@@ -380,6 +398,7 @@ runs:
         NAMESPACE: ${{ env.NAMESPACE }}
         DB_NAME: ${{ inputs.db-name }}
         EXCLUDED_APPS: ${{ inputs.excluded-apps }}
+        PUBSUB_ADDRESS: ${{ inputs.pubsub-address }}
 
     - name: Deploy specific microservice version
       shell: bash

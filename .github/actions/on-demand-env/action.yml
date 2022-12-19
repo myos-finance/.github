@@ -53,6 +53,14 @@ inputs:
     description: "DB init file (create DBs)"
     required: false
     default: '.github-repo/.github/actions/on-demand-env/create_db.sql'
+  pubsub-create-timeout:
+    description: "Timeout to have the pubsub instance running (in seconds)"
+    required: false
+    default: '60'
+  pubsub-template:
+    description: "Path to the pubsub template (terraform config)"
+    required: false
+    default: '.github-repo/.github/actions/on-demand-env/pubsub'
   source-namespace:
     description: "Source namespace used to import secrets"
     required: false
@@ -61,6 +69,14 @@ inputs:
     description: "Path to gitops repo"
     required: false
     default: 'gitops'
+  tf-pubsub-path:
+    description: "Path to tf-pubsub module"
+    required: false
+    default: 'pubsub'
+  tf-pubsub-module-path:
+    description: "Path to tf-pubsub module"
+    required: false
+    default: 'tf-pubsub'
   excluded-apps:
     description: "Excluded apps from on demand environments"
     required: false
@@ -86,6 +102,14 @@ runs:
         repository: 'myos-finance/gitops'
         ref: 'main'
         path: 'gitops'
+        token: ${{ inputs.token }}
+
+    - name: Checkout tf-pubsub repository
+      uses: actions/checkout@v3
+      with:
+        repository: 'myos-finance/tf-pubsub'
+        ref: 'main'
+        path: 'tf-pubsub'
         token: ${{ inputs.token }}
 
     - name: Set up kubectl
@@ -379,6 +403,101 @@ runs:
         MICROSERVICE: ${{ inputs.microservice }}
         VERSION: ${{ inputs.version }}
         LABELS: ${{ inputs.labels }}
+
+    - name: Deploy pubsub emulator
+      shell: bash
+      run: |
+        # Deploy pubsub emulator
+        cd "${GITOPS_PATH}/environments/${NAMESPACE}/pubsub-emulator"
+        kustomize build | kubectl apply -f-
+      env:
+        GITOPS_PATH: ${{ inputs.gitops-path }}
+        NAMESPACE: ${{ env.NAMESPACE }}  
+
+    - name: Check pubsub instance
+      shell: bash
+      run: |
+        # Check Pubsub
+        # $1: namespace name
+        # $2: timeout (in seconds)
+        check_pubsub () {
+          echo "Checking pubsub status..."
+          NAMESPACE=$1
+          TIMEOUT=$2
+
+          # Get pod name
+          POD_NAME=$(kubectl -n "$NAMESPACE" get pods | grep pubsub-emulator | awk '{print $1}')
+
+          while [ $TIMEOUT -gt 0 ]
+          do
+            sleep 10
+            echo "Retrying..."
+            PUBSUB_STATUS=$(kubectl -n "$NAMESPACE" get pod ${POD_NAME} --output="jsonpath={.status.containerStatuses[*].ready}")
+            if [[ "$PUBSUB_STATUS" == "true" ]]; then
+              TIMEOUT=0
+            else
+              ((TIMEOUT=TIMEOUT-10))
+            fi
+          done
+
+          if [[ "$PUBSUB_STATUS" != "true" ]]; then
+            echo "Pubsub emulator is not ready, exiting..."
+            exit 1
+          else
+            echo "Pubsub emulator is ready"
+          fi
+        }
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          check_pubsub "$NAMESPACE" "$TIMEOUT"
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+        TIMEOUT: ${{ inputs.pubsub-create-timeout }}
+
+    - name: Create pub/sub config
+      shell: bash
+      run: |
+        # Create pub/sub config
+        # $1: namespace
+        # $2: path to tf pubsub module
+        create_pubsub_config () {
+          echo "Create pubsub config..."
+          NAMESPACE=$1
+          TF_PUBSUB_MODULE_PATH=$2
+
+          # Remove message duration in topics/subs, not supported by the pubsub emulator
+          sed -i '/message_retention_duration/d' ${TF_PUBSUB_MODULE_PATH}/pub.tf
+          sed -i '/message_retention_duration/d' ${TF_PUBSUB_MODULE_PATH}/sub.tf
+
+          # Remove enable once delivery, not supported by the pubsub emulator
+          sed -i '/enable_exactly_once_delivery/d' ${TF_PUBSUB_MODULE_PATH}/sub.tf
+        }
+
+        create_pubsub_config "$NAMESPACE" "$TF_PUBSUB_MODULE_PATH"
+      env:
+        TF_PUBSUB_MODULE_PATH: ${{ inputs.tf-pubsub-module-path }}
+        NAMESPACE: ${{ env.NAMESPACE }}
+
+    - name: Open port forwarding
+      shell: bash
+      run: |
+        # Open port-forwarding to pubsub-emulator pod
+        kubectl -n "$NAMESPACE" port-forward svc/pubsub-emulator 8085:8085 1>/dev/null 2>&1 &
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+
+    - name: Apply pubsub config
+      shell: bash
+      run: |
+        # Copy pubsub config and apply it with terraform
+        cp -R "${TF_TEMPLATE_FOLDER}" "$TF_PUBSUB_PATH"
+        terraform -chdir=$TF_PUBSUB_PATH init &&  terraform -chdir=$TF_PUBSUB_PATH apply -auto-approve
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        TF_PUBSUB_PATH: ${{ inputs.tf-pubsub-path }}
+        TF_TEMPLATE_FOLDER: ${{ inputs.pubsub-template }}
 
     - name: Apply manifests
       shell: bash

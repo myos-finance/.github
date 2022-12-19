@@ -439,11 +439,15 @@ runs:
       shell: bash
       run: |
         # Deploy pubsub emulator
-        cd "${GITOPS_PATH}/environments/${NAMESPACE}/pubsub-emulator"
-        kustomize build | kubectl apply -f-
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          cd "${GITOPS_PATH}/environments/${NAMESPACE}/pubsub-emulator"
+          kustomize build | kubectl apply -f-
+        fi
       env:
         GITOPS_PATH: ${{ inputs.gitops-path }}
-        NAMESPACE: ${{ env.NAMESPACE }}  
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
 
     - name: Check pubsub instance
       shell: bash
@@ -506,29 +510,41 @@ runs:
           sed -i '/enable_exactly_once_delivery/d' ${TF_PUBSUB_MODULE_PATH}/sub.tf
         }
 
-        create_pubsub_config "$NAMESPACE" "$TF_PUBSUB_MODULE_PATH"
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          create_pubsub_config "$NAMESPACE" "$TF_PUBSUB_MODULE_PATH"
+        fi
       env:
         TF_PUBSUB_MODULE_PATH: ${{ inputs.tf-pubsub-module-path }}
         NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
 
     - name: Open port forwarding
       shell: bash
       run: |
         # Open port-forwarding to pubsub-emulator pod
-        kubectl -n "$NAMESPACE" port-forward svc/pubsub-emulator 8085:8085 1>/dev/null 2>&1 &
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          kubectl -n "$NAMESPACE" port-forward svc/pubsub-emulator 8085:8085 1>/dev/null 2>&1 &
+        fi
       env:
         NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
 
     - name: Apply pubsub config
       shell: bash
       run: |
         # Copy pubsub config and apply it with terraform
-        cp -R "${TF_TEMPLATE_FOLDER}" "$TF_PUBSUB_PATH"
-        terraform -chdir=$TF_PUBSUB_PATH init &&  terraform -chdir=$TF_PUBSUB_PATH apply -auto-approve
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          cp -R "${TF_TEMPLATE_FOLDER}" "$TF_PUBSUB_PATH"
+          terraform -chdir=$TF_PUBSUB_PATH init &&  terraform -chdir=$TF_PUBSUB_PATH apply -auto-approve
+        fi
       env:
         NAMESPACE: ${{ env.NAMESPACE }}
         TF_PUBSUB_PATH: ${{ inputs.tf-pubsub-path }}
         TF_TEMPLATE_FOLDER: ${{ inputs.pubsub-template }}
+        COUNT_NS: ${{ env.COUNT_NS }}
 
     - name: Apply manifests
       shell: bash

@@ -44,7 +44,7 @@ inputs:
   db-create-timeout:
     description: "Timeout to have the DB running (in seconds)"
     required: false
-    default: '60'
+    default: '120'
   db-user:
     description: "DB admin user"
     required: false
@@ -56,7 +56,7 @@ inputs:
   pubsub-create-timeout:
     description: "Timeout to have the pubsub instance running (in seconds)"
     required: false
-    default: '60'
+    default: '120'
   pubsub-template:
     description: "Path to the pubsub template (terraform config)"
     required: false

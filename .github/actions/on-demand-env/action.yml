@@ -61,6 +61,10 @@ inputs:
     description: "Path to the pubsub template (terraform config)"
     required: false
     default: '.github-repo/.github/actions/on-demand-env/pubsub'
+  pubsub-address:
+    description: "Pubsub emulator addess"
+    required: false
+    default: 'pubsub-emulator:8085'
   source-namespace:
     description: "Source namespace used to import secrets"
     required: false
@@ -331,6 +335,18 @@ runs:
         DB_NAME: ${{ inputs.db-name }}
         DB_PASS: ${{ env.DB_PASS }}
 
+    - name: Patch default service account
+      shell: bash
+      run: |
+        # Allow pull from our GCR repository by patching default service account with imagePullSecrets
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          kubectl -n "$NAMESPACE" patch serviceaccount default -p '{"imagePullSecrets": [{"name": "gcr-json-key"}]}'
+        fi
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+
     - name: Create environment
       shell: bash
       run: |
@@ -373,6 +389,20 @@ runs:
           # Remove all secrets from kustomize conf
           find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "*-secret.yaml" | xargs rm
           find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "kustomization.yaml" | xargs sed -i "/.*secret.yaml/d"
+
+          # Patch pubsub to point to emulator
+          # Get all applications using pubsub
+          PUBSUB_APPS=($(grep -rnw "${GITOPS_PATH}/applications/" -e '.*sa-pubsub.*' | awk '{print $1}' | sed 's/gitops\/applications\/\(.*\)\/.*/\1/' | uniq | xargs))
+
+          # For each app, find all envvars files and patch
+          for APP in ${PUBSUB_APPS[@]}
+          do
+            FILES_TO_PATCH=($(find "${GITOPS_PATH}/environments/${NAMESPACE}/${APP}" -name 'envvars*'))
+            for ENVARS_FILE in ${FILES_TO_PATCH[@]}
+            do
+              yq -i ".spec.template.spec.containers[0].env += [{ \"name\": \"PUBSUB_EMULATOR_HOST\", \"value\": \"${PUBSUB_ADDRESS}\" }]" "$ENVARS_FILE"
+            done
+          done
         }
         create_env "$GITOPS_PATH" "$NAMESPACE" "$DB_NAME" "$EXCLUDED_APPS"
       env:
@@ -380,6 +410,7 @@ runs:
         NAMESPACE: ${{ env.NAMESPACE }}
         DB_NAME: ${{ inputs.db-name }}
         EXCLUDED_APPS: ${{ inputs.excluded-apps }}
+        PUBSUB_ADDRESS: ${{ inputs.pubsub-address }}
 
     - name: Deploy specific microservice version
       shell: bash
@@ -408,11 +439,15 @@ runs:
       shell: bash
       run: |
         # Deploy pubsub emulator
-        cd "${GITOPS_PATH}/environments/${NAMESPACE}/pubsub-emulator"
-        kustomize build | kubectl apply -f-
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          cd "${GITOPS_PATH}/environments/${NAMESPACE}/pubsub-emulator"
+          kustomize build | kubectl apply -f-
+        fi
       env:
         GITOPS_PATH: ${{ inputs.gitops-path }}
-        NAMESPACE: ${{ env.NAMESPACE }}  
+        NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
 
     - name: Check pubsub instance
       shell: bash
@@ -475,29 +510,41 @@ runs:
           sed -i '/enable_exactly_once_delivery/d' ${TF_PUBSUB_MODULE_PATH}/sub.tf
         }
 
-        create_pubsub_config "$NAMESPACE" "$TF_PUBSUB_MODULE_PATH"
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          create_pubsub_config "$NAMESPACE" "$TF_PUBSUB_MODULE_PATH"
+        fi
       env:
         TF_PUBSUB_MODULE_PATH: ${{ inputs.tf-pubsub-module-path }}
         NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
 
     - name: Open port forwarding
       shell: bash
       run: |
         # Open port-forwarding to pubsub-emulator pod
-        kubectl -n "$NAMESPACE" port-forward svc/pubsub-emulator 8085:8085 1>/dev/null 2>&1 &
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          kubectl -n "$NAMESPACE" port-forward svc/pubsub-emulator 8085:8085 1>/dev/null 2>&1 &
+        fi
       env:
         NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
 
     - name: Apply pubsub config
       shell: bash
       run: |
         # Copy pubsub config and apply it with terraform
-        cp -R "${TF_TEMPLATE_FOLDER}" "$TF_PUBSUB_PATH"
-        terraform -chdir=$TF_PUBSUB_PATH init &&  terraform -chdir=$TF_PUBSUB_PATH apply -auto-approve
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          cp -R "${TF_TEMPLATE_FOLDER}" "$TF_PUBSUB_PATH"
+          terraform -chdir=$TF_PUBSUB_PATH init &&  terraform -chdir=$TF_PUBSUB_PATH apply -auto-approve
+        fi
       env:
         NAMESPACE: ${{ env.NAMESPACE }}
         TF_PUBSUB_PATH: ${{ inputs.tf-pubsub-path }}
         TF_TEMPLATE_FOLDER: ${{ inputs.pubsub-template }}
+        COUNT_NS: ${{ env.COUNT_NS }}
 
     - name: Apply manifests
       shell: bash

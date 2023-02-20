@@ -35,6 +35,12 @@ inputs:
   myos-ci-ssh-private-key:
     description: "Private ssh key to authenticate to google and download modules"
     required: true
+  pritunl-token:
+    description: Pritunl token"
+    required: true
+  pritunl-secret:
+    description: "Pritunl secret"
+    required: true
 
 runs:
   using: 'composite'
@@ -71,6 +77,8 @@ runs:
         CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
         TF_VAR_pagerduty_token: ${{ inputs.pagerduty-token }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        TF_VAR_pritunl_token: ${{ inputs.pritunl-token }}
+        TF_VAR_pritunl_secret: ${{ inputs.pritunl-secret }}
 
     - name: Terraform fmt
       shell: bash
@@ -92,6 +100,8 @@ runs:
         CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
         TF_VAR_pagerduty_token: ${{ inputs.pagerduty-token }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        TF_VAR_pritunl_token: ${{ inputs.pritunl-token }}
+        TF_VAR_pritunl_secret: ${{ inputs.pritunl-secret }}
 
     - name: Terraform apply
       shell: bash
@@ -104,3 +114,5 @@ runs:
         CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
         TF_VAR_pagerduty_token: ${{ inputs.pagerduty-token }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        TF_VAR_pritunl_token: ${{ inputs.pritunl-token }}
+        TF_VAR_pritunl_secret: ${{ inputs.pritunl-secret }}

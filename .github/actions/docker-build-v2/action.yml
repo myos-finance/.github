@@ -39,23 +39,15 @@ runs:
         # via gcloud command-line tool.
         gcloud auth configure-docker
 
-    - name: Check if already an image built for the commit
-      shell: bash
-      run: |
-        CHECK_IMAGE_TAG=$(gcloud container images list-tags gcr.io/${GCLOUD_PROJECT}/${IMAGE_NAME} | grep "$COMMIT_HASH_SHORT" | awk '{ print $2}' | sed 's/,.*//' || true)
-        echo "CHECK_IMAGE_TAG=$CHECK_IMAGE_TAG" >> $GITHUB_ENV
-
     # Build the Docker image
     - name: Build
       shell: bash
       run: |
-        if [[ "$CHECK_IMAGE_TAG" == "" ]]; then
-          if [[ "$BUILD_ARGS" == "" ]]; then
-            docker build --build-arg APP_VERSION=$VERSION -t image .
-          else
-            docker_cmd="docker build $BUILD_ARGS -t image ."
-            $docker_cmd
-          fi
+        if [[ "$BUILD_ARGS" == "" ]]; then
+          docker build --build-arg APP_VERSION=$VERSION -t image .
+        else
+          docker_cmd="docker build $BUILD_ARGS -t image ."
+          $docker_cmd
         fi
       env:
         BUILD_ARGS: "${{ inputs.build-args }}"
@@ -67,9 +59,5 @@ runs:
         IMAGE_ID=gcr.io/$GCLOUD_PROJECT/$IMAGE_NAME
         echo IMAGE_ID=$IMAGE_ID
         echo VERSION=$VERSION
-        if [[ "$CHECK_IMAGE_TAG" == "" ]]; then
-          docker tag image $IMAGE_ID:$VERSION
-          docker push $IMAGE_ID:$VERSION
-        else
-          gcloud container images add-tag -q  gcr.io/${GCLOUD_PROJECT}/${IMAGE_NAME}:${CHECK_IMAGE_TAG}  gcr.io/${GCLOUD_PROJECT}/${IMAGE_NAME}:$VERSION
-        fi
+        docker tag image $IMAGE_ID:$VERSION
+        docker push $IMAGE_ID:$VERSION

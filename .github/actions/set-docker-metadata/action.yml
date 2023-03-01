@@ -28,6 +28,9 @@ runs:
       run: |
         TAG=$(echo "${GITHUB_REF#refs/tags/}" | sed -e 's,^v,,')
         echo "_VERSION=$TAG" >> $GITHUB_ENV
+        SHA_REF='${{ github.sha }}'
+        COMMIT_HASH_SHORT=$(git rev-parse --short "$SHA_REF")
+        echo "_COMMIT_HASH_SHORT=$COMMIT_HASH_SHORT" >> $GITHUB_ENV
 
     - name: Generate tag using PR
       shell: bash

@@ -37,6 +37,7 @@ runs:
       if: ${{ inputs.image-tag-using == 'pr' }}
       run: |
         BRANCH='${{ github.event.pull_request.head.ref }}'
+        COMMIT_HASH_SHORT=$(git rev-parse --short "$BRANCH")
         echo "_VERSION=$(echo $BRANCH'_'$COMMIT_HASH_SHORT)" >> $GITHUB_ENV
 
     - name: Detect environment

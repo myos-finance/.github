@@ -39,6 +39,12 @@ runs:
         # via gcloud command-line tool.
         gcloud auth configure-docker
 
+    - name: Check if already an image built for the commit
+      shell: bash
+      run: |
+        CHECK_IMAGE_TAG=$(gcloud container images list-tags gcr.io/${GCLOUD_PROJECT}/${IMAGE_NAME} | grep "$COMMIT_HASH_SHORT" | awk '{ print $2}' | sed 's/,.*//' | xargs || true)
+        echo "CHECK_IMAGE_TAG=$CHECK_IMAGE_TAG" >> $GITHUB_ENV
+
     # Build the Docker image
     - name: Build
       shell: bash

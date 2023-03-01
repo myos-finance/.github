@@ -21,6 +21,7 @@ runs:
         BRANCH=$(echo "${BRANCH_REF#refs/heads/}" | sed -e 's,.*/\(.*\),\1,')
         COMMIT_HASH_SHORT=$(git rev-parse --short "$SHA_REF")
         echo "_VERSION=$(echo $BRANCH'_'$COMMIT_HASH_SHORT)" >> $GITHUB_ENV
+        echo "_COMMIT_HASH_SHORT=$COMMIT_HASH_SHORT" >> $GITHUB_ENV
 
     - name: Generate version using tag
       shell: bash
@@ -58,3 +59,4 @@ runs:
       run: |
         echo "DOCKER_IMAGE_VERSION=$_VERSION" >> $GITHUB_ENV
         echo "DOCKER_IMAGE_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
+        echo "COMMIT_HASH_SHORT=$_COMMIT_HASH_SHORT" >> $GITHUB_ENV

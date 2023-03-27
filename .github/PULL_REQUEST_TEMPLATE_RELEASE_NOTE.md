@@ -42,7 +42,7 @@ Include a brief overview of related initiatives, such as epics that this is a sm
 - Initiative 2
 - Initiative 3
 
-**Who owns this**
+**Who owns this?**
 
 Include a list of Product and Engineering stakeholders who can be contacted if there are any queries or concerns relating to this release.
 

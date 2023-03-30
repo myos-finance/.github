@@ -12,4 +12,4 @@ Ticket: [PLAT-000](https://myos.atlassian.net/browse/PLAT-000)
 
 Add the following query params to the current URL to use other PR templates:
 
-- Internal release notes: `&template=release.md`
+- Internal release notes: `?template=release.md`

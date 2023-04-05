@@ -89,6 +89,10 @@ inputs:
     description: "Timeout to have the pods running (in seconds)"
     required: false
     default: '900'
+  vpn-ip:
+    description: "VPN IP to be whitelisted in ingresses"
+    required: false
+    default: '34.107.54.255'
 
 runs:
   using: 'composite'
@@ -415,7 +419,11 @@ runs:
           FRONTOFFICE_FRONTEND_URL="app-${NAMESPACE}.dev.myos.com"
           sed -i "s/https:\/\/api.app.dev.myos.com/$FRONTOFFICE_BACKEND_URL/g" "${GITOPS_PATH}/environments/${NAMESPACE}"/frontoffice-app/envvars.patch.yaml
           sed -i "s/https:\/\/app.dev.myos.com/$FRONTOFFICE_FRONTEND_URL/g" "${GITOPS_PATH}/environments/${NAMESPACE}"/frontoffice-app/envvars.patch.yaml
+
+          # Patch all ingresses to hide behind VPN
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "ingress.yaml" | while read ingress_file; do yq -i ".metadata.annotations.\"nginx.ingress.kubernetes.io/whitelist-source-range\" = \"${VPN_IP}\"" "$ingress_file"; done
         }
+
         if [[ "$COUNT_NS" -eq 0 ]]
         then
           create_env "$GITOPS_PATH" "$NAMESPACE" "$DB_NAME" "$EXCLUDED_APPS"
@@ -427,6 +435,7 @@ runs:
         EXCLUDED_APPS: ${{ inputs.excluded-apps }}
         PUBSUB_ADDRESS: ${{ inputs.pubsub-address }}
         COUNT_NS: ${{ env.COUNT_NS }}
+        VPN_IP: ${{ inputs.vpn-ip }}
 
     - name: Deploy pubsub emulator
       shell: bash

@@ -403,6 +403,18 @@ runs:
               yq -i ".spec.template.spec.containers[0].env += [{ \"name\": \"PUBSUB_EMULATOR_HOST\", \"value\": \"${PUBSUB_ADDRESS}\" }]" "$ENVARS_FILE"
             done
           done
+
+          # Patch backoffice-frontend endpoints
+          BACKOFFICE_BACKEND_URL="api.backoffice-${NAMESPACE}.dev.myos.com"
+          BACKOFFICE_FRONTEND_URL="backoffice-${NAMESPACE}.dev.myos.com"
+          sed -i "s/https:\/\/api.backoffice.dev.myos.com/$BACKOFFICE_BACKEND_URL/g" "${GITOPS_PATH}/environments/${NAMESPACE}"/backoffice-frontend/envvars.patch.yaml
+          sed -i "s/https:\/\/backoffice.dev.myos.com/$BACKOFFICE_FRONTEND_URL/g" "${GITOPS_PATH}/environments/${NAMESPACE}"/backoffice-frontend/envvars.patch.yaml
+
+          # Patch frontoffice-app endpoints
+          FRONTOFFICE_BACKEND_URL="api.backoffice-${NAMESPACE}.dev.myos.com"
+          FRONTOFFICE_FRONTEND_URL="app-${NAMESPACE}.dev.myos.com"
+          sed -i "s/https:\/\/api.app.dev.myos.com/$FRONTOFFICE_BACKEND_URL/g" "${GITOPS_PATH}/environments/${NAMESPACE}"/frontoffice-app/envvars.patch.yaml
+          sed -i "s/https:\/\/app.dev.myos.com/$FRONTOFFICE_FRONTEND_URL/g" "${GITOPS_PATH}/environments/${NAMESPACE}"/frontoffice-app/envvars.patch.yaml
         }
         if [[ "$COUNT_NS" -eq 0 ]]
         then

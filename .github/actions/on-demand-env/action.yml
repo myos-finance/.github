@@ -136,7 +136,7 @@ runs:
     - name: Get namespace
       shell: bash
       run: |
-        NAMESPACE=$(echo "temp-${MICROSERVICE}-${BRANCH}" | cut -c-63 | tr '[:upper:]' '[:lower:]')
+        NAMESPACE=$(echo "on-demand-${MICROSERVICE}-${BRANCH}" | cut -c-63 | tr '[:upper:]' '[:lower:]')
         echo "NAMESPACE=$NAMESPACE" >> $GITHUB_ENV
       env:
         MICROSERVICE: ${{ inputs.microservice }}

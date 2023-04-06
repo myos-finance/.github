@@ -89,6 +89,10 @@ inputs:
     description: "Timeout to have the pods running (in seconds)"
     required: false
     default: '900'
+  vpn-ip:
+    description: "VPN IP to be whitelisted in ingresses"
+    required: false
+    default: '34.107.54.255'
 
 runs:
   using: 'composite'
@@ -136,7 +140,7 @@ runs:
     - name: Get namespace
       shell: bash
       run: |
-        NAMESPACE=$(echo "temp-${MICROSERVICE}-${BRANCH}" | cut -c-63 | tr '[:upper:]' '[:lower:]')
+        NAMESPACE=$(echo "on-demand-${BRANCH}" | cut -c-63 | tr '[:upper:]' '[:lower:]')
         echo "NAMESPACE=$NAMESPACE" >> $GITHUB_ENV
       env:
         MICROSERVICE: ${{ inputs.microservice }}
@@ -403,37 +407,35 @@ runs:
               yq -i ".spec.template.spec.containers[0].env += [{ \"name\": \"PUBSUB_EMULATOR_HOST\", \"value\": \"${PUBSUB_ADDRESS}\" }]" "$ENVARS_FILE"
             done
           done
+
+          # Patch backoffice-frontend endpoints
+          BACKOFFICE_BACKEND_URL="api.backoffice-${NAMESPACE}.dev.myos.com"
+          BACKOFFICE_FRONTEND_URL="backoffice-${NAMESPACE}.dev.myos.com"
+          sed -i "s/https:\/\/api.backoffice.dev.myos.com/$BACKOFFICE_BACKEND_URL/g" "${GITOPS_PATH}/environments/${NAMESPACE}"/backoffice-frontend/envvars.patch.yaml
+          sed -i "s/https:\/\/backoffice.dev.myos.com/$BACKOFFICE_FRONTEND_URL/g" "${GITOPS_PATH}/environments/${NAMESPACE}"/backoffice-frontend/envvars.patch.yaml
+
+          # Patch frontoffice-app endpoints
+          FRONTOFFICE_BACKEND_URL="api.backoffice-${NAMESPACE}.dev.myos.com"
+          FRONTOFFICE_FRONTEND_URL="app-${NAMESPACE}.dev.myos.com"
+          sed -i "s/https:\/\/api.app.dev.myos.com/$FRONTOFFICE_BACKEND_URL/g" "${GITOPS_PATH}/environments/${NAMESPACE}"/frontoffice-app/envvars.patch.yaml
+          sed -i "s/https:\/\/app.dev.myos.com/$FRONTOFFICE_FRONTEND_URL/g" "${GITOPS_PATH}/environments/${NAMESPACE}"/frontoffice-app/envvars.patch.yaml
+
+          # Patch all ingresses to hide behind VPN
+          find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "ingress.yaml" | while read ingress_file; do yq -i ".metadata.annotations.\"nginx.ingress.kubernetes.io/whitelist-source-range\" = \"${VPN_IP}\"" "$ingress_file"; done
         }
-        create_env "$GITOPS_PATH" "$NAMESPACE" "$DB_NAME" "$EXCLUDED_APPS"
+
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          create_env "$GITOPS_PATH" "$NAMESPACE" "$DB_NAME" "$EXCLUDED_APPS"
+        fi
       env:
         GITOPS_PATH: ${{ inputs.gitops-path }}
         NAMESPACE: ${{ env.NAMESPACE }}
         DB_NAME: ${{ inputs.db-name }}
         EXCLUDED_APPS: ${{ inputs.excluded-apps }}
         PUBSUB_ADDRESS: ${{ inputs.pubsub-address }}
-
-    - name: Deploy specific microservice version
-      shell: bash
-      run: |
-        # Deploy latest image of the branch microservice for which on-demand environment was triggered
-        sed -i "s/newTag: \(.*\)/newTag: $VERSION/" "${GITOPS_PATH}/environments/${NAMESPACE}/${MICROSERVICE}/kustomization.yaml"
-
-        # Deploy all the fixed versions with labels microservice:version
-        LABEL_ARR=($(echo $LABELS))
-        for LABEL in "${LABEL_ARR[@]}"; do
-          if [[ "$LABEL" =~ ^\".*:.*\"$ ]]; 
-          then 
-            MS=$(echo "${LABEL//\"}" | cut -d ':' -f 1)
-            MS_VERSION=$(echo "${LABEL//\"}" | cut -d ':' -f 2)
-            sed -i "s/newTag: \(.*\)/newTag: $MS_VERSION/" "${GITOPS_PATH}/environments/${NAMESPACE}/${MS}/kustomization.yaml"
-          fi
-        done
-      env:
-        GITOPS_PATH: ${{ inputs.gitops-path }}
-        NAMESPACE: ${{ env.NAMESPACE }}
-        MICROSERVICE: ${{ inputs.microservice }}
-        VERSION: ${{ inputs.version }}
-        LABELS: ${{ inputs.labels }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+        VPN_IP: ${{ inputs.vpn-ip }}
 
     - name: Deploy pubsub emulator
       shell: bash
@@ -549,13 +551,27 @@ runs:
     - name: Apply manifests
       shell: bash
       run: |
-        # Create root kustomization file and apply
-        cd "${GITOPS_PATH}/environments/${NAMESPACE}"
-        kustomize create --autodetect --recursive
-        kustomize build | kubectl apply -f-
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          # Create root kustomization file and apply
+          cd "${GITOPS_PATH}/environments/${NAMESPACE}"
+          kustomize create --autodetect --recursive
+          kustomize build | kubectl apply -f-
+        fi
       env:
         GITOPS_PATH: ${{ inputs.gitops-path }}
         NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}
+
+    - name: Deploy PR version of the microservice
+      shell: bash
+      run: |
+        REPO=$(kubectl get deployment "${MICROSERVICE}" --namespace="${NAMESPACE}" -o=jsonpath='{.spec.template.spec.containers[0].image}' | cut -d ':' -f 1)
+        kubectl set image --namespace="${NAMESPACE}" "deployment/${MICROSERVICE}" "*=${REPO}:${VERSION}"
+      env:
+        NAMESPACE: ${{ env.NAMESPACE }}
+        MICROSERVICE: ${{ inputs.microservice }}
+        VERSION: ${{ inputs.version }}
 
     - name: Suspend cronjobs
       shell: bash
@@ -582,10 +598,15 @@ runs:
             kubectl -n "$NAMESPACE" delete jobs `kubectl -n "$NAMESPACE" get jobs -o custom-columns=:.metadata.name`
           fi
         }
-        suspend_cronjob "$NAMESPACE" "$SOURCE_NAMESPACE"
+
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          suspend_cronjob "$NAMESPACE" "$SOURCE_NAMESPACE"
+        fi
       env:
         NAMESPACE: ${{ env.NAMESPACE }}
         SOURCE_NAMESPACE: ${{ inputs.source-namespace }}
+        COUNT_NS: ${{ env.COUNT_NS }}
 
     - name: Check env
       shell: bash
@@ -605,7 +626,7 @@ runs:
             sleep 15
             echo "Retrying..."
             # || true -> if grep does nt match anything, it returns non 0 exit status
-            PODS_STATUS=$(kubectl -n "$NAMESPACE" get pods | grep "0/1" || true)
+            PODS_STATUS=$(kubectl -n "$NAMESPACE" get pods | grep -v "Completed" | grep "0/1" || true)
             COUNT_POD_NOT_READY=$(echo "$PODS_STATUS" | wc -l | xargs)
             
             if [[ "$COUNT_POD_NOT_READY" -eq 1 ]]; then
@@ -646,26 +667,21 @@ runs:
             kubectl -n "$NAMESPACE" patch cronjobs "$CRONJOB" -p '{"spec" : {"suspend" : false }}'
           done
         }
-        unsuspend_cronjob "$NAMESPACE" "$SOURCE_NAMESPACE"
+
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          unsuspend_cronjob "$NAMESPACE" "$SOURCE_NAMESPACE"
+        fi
       env:
         NAMESPACE: ${{ env.NAMESPACE }}
         SOURCE_NAMESPACE: ${{ inputs.source-namespace }}
+        COUNT_NS: ${{ env.COUNT_NS }}
 
     - name: Post configurations
       shell: bash
       run: |
         # This part should stay minimal and we should avoid it as much as possible
         # as it's hard to maintain on the long run
-
-        # Patch backoffice-frontend ingress to add basic auth
-        # $1: namespace name
-        bofe_basic_auth () {
-          echo "Add basic auth for BOFE..."
-          NAMESPACE=$1
-          kubectl -n "$NAMESPACE" annotate ingress backoffice-frontend nginx.ingress.kubernetes.io/auth-type=basic --overwrite
-          kubectl -n "$NAMESPACE" annotate ingress backoffice-frontend nginx.ingress.kubernetes.io/auth-secret=backoffice-frontend-on-demand-auth --overwrite
-          kubectl -n "$NAMESPACE" annotate ingress backoffice-frontend nginx.ingress.kubernetes.io/auth-realm='Authentication Required - on demand' --overwrite
-        }
 
         # Suspend unneeded deployment-restart that requires a service account with too many perms for on demand
         # $1: namespace name
@@ -674,7 +690,10 @@ runs:
           kubectl -n "$NAMESPACE" patch cronjobs deployment-restart -p '{"spec" : {"suspend" : true }}'
         }
 
-        bofe_basic_auth "$NAMESPACE"
-        suspend_deployment_restart "$NAMESPACE"
+        if [[ "$COUNT_NS" -eq 0 ]]
+        then
+          suspend_deployment_restart "$NAMESPACE"
+        fi
       env:
         NAMESPACE: ${{ env.NAMESPACE }}
+        COUNT_NS: ${{ env.COUNT_NS }}

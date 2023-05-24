@@ -26,9 +26,6 @@ inputs:
   cloudflare-api-token:
     description: "Cloudflare API token"
     required: true
-  pagerduty-token:
-    description: "Pagerduty token"
-    required: true
   github-token:
     description: "Github token"
     required: true
@@ -75,7 +72,6 @@ runs:
         GOOGLE_CREDENTIALS: /tmp/.google_credentials.json
         SENTRY_TOKEN: ${{ inputs.sentry-auth-token }}
         CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
-        TF_VAR_pagerduty_token: ${{ inputs.pagerduty-token }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         TF_VAR_pritunl_token: ${{ inputs.pritunl-token }}
         TF_VAR_pritunl_secret: ${{ inputs.pritunl-secret }}
@@ -98,7 +94,6 @@ runs:
         GOOGLE_CREDENTIALS: /tmp/.google_credentials.json
         SENTRY_TOKEN: ${{ inputs.sentry-auth-token }}
         CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
-        TF_VAR_pagerduty_token: ${{ inputs.pagerduty-token }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         TF_VAR_pritunl_token: ${{ inputs.pritunl-token }}
         TF_VAR_pritunl_secret: ${{ inputs.pritunl-secret }}
@@ -112,7 +107,6 @@ runs:
         GOOGLE_CREDENTIALS: /tmp/.google_credentials.json
         SENTRY_TOKEN: ${{ inputs.sentry-auth-token }}
         CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
-        TF_VAR_pagerduty_token: ${{ inputs.pagerduty-token }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         TF_VAR_pritunl_token: ${{ inputs.pritunl-token }}
         TF_VAR_pritunl_secret: ${{ inputs.pritunl-secret }}

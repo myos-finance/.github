@@ -38,6 +38,12 @@ inputs:
   pritunl-secret:
     description: "Pritunl secret"
     required: true
+  datadog-api-key:
+    description: "Datadog API key"
+    required: true
+  datadog-app-key:
+    description: "Datadog APP key"
+    required: true
 
 runs:
   using: 'composite'
@@ -75,6 +81,8 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         TF_VAR_pritunl_token: ${{ inputs.pritunl-token }}
         TF_VAR_pritunl_secret: ${{ inputs.pritunl-secret }}
+        DD_API_KEY: ${{ inputs.datadog-api-key }}
+        DD_APP_KEY: ${{ inputs.datadog-app-key }}
 
     - name: Terraform fmt
       shell: bash
@@ -97,6 +105,8 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         TF_VAR_pritunl_token: ${{ inputs.pritunl-token }}
         TF_VAR_pritunl_secret: ${{ inputs.pritunl-secret }}
+        DD_API_KEY: ${{ inputs.datadog-api-key }}
+        DD_APP_KEY: ${{ inputs.datadog-app-key }}
 
     - name: Terraform apply
       shell: bash
@@ -110,3 +120,5 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         TF_VAR_pritunl_token: ${{ inputs.pritunl-token }}
         TF_VAR_pritunl_secret: ${{ inputs.pritunl-secret }}
+        DD_API_KEY: ${{ inputs.datadog-api-key }}
+        DD_APP_KEY: ${{ inputs.datadog-app-key }}

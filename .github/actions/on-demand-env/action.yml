@@ -140,7 +140,7 @@ runs:
     - name: Get namespace
       shell: bash
       run: |
-        NAMESPACE=$(echo "on-demand-${BRANCH}" | cut -c-63 | tr '[:upper:]' '[:lower:]')
+        NAMESPACE=$(echo "ondemand-${BRANCH}" | cut -c-63 | tr '[:upper:]' '[:lower:]')
         echo "NAMESPACE=$NAMESPACE" >> $GITHUB_ENV
       env:
         MICROSERVICE: ${{ inputs.microservice }}
@@ -408,6 +408,14 @@ runs:
             done
           done
 
+          # Patch NODE_ENV variable
+          ENV_VARS_FILES=($(find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "*envvars*.patch.yaml" | sed 's/gitops\/applications\/\(.*\)\/.*/\1/' | uniq | xargs))
+          for ENV_FILE in ${ENV_VARS_FILES[@]}
+          do
+            yq -i '(.spec.template.spec.containers[].env[] | select(.name == "NODE_ENV").value) |= env(NAMESPACE)' "$ENV_FILE"
+            yq -i '(.spec.template.spec.initContainers[].env[] | select(.name == "NODE_ENV").value) |= env(NAMESPACE)' "$ENV_FILE"
+          done
+
           # Patch backoffice-frontend endpoints
           BACKOFFICE_BACKEND_URL="api.backoffice-${NAMESPACE}.dev.myos.com"
           BACKOFFICE_FRONTEND_URL="backoffice-${NAMESPACE}.dev.myos.com"
@@ -419,6 +427,9 @@ runs:
           FRONTOFFICE_FRONTEND_URL="app-${NAMESPACE}.dev.myos.com"
           sed -i "s/https:\/\/api.app.dev.myos.com/$FRONTOFFICE_BACKEND_URL/g" "${GITOPS_PATH}/environments/${NAMESPACE}"/frontoffice-app/envvars.patch.yaml
           sed -i "s/https:\/\/app.dev.myos.com/$FRONTOFFICE_FRONTEND_URL/g" "${GITOPS_PATH}/environments/${NAMESPACE}"/frontoffice-app/envvars.patch.yaml
+
+          # Patch backoffice-backend auth to disable SSO
+          yq -i ".spec.template.spec.containers[0].env += [{ \"name\": \"SKIP_SSO\", \"value\": \"true\" }]" "${GITOPS_PATH}/environments/${NAMESPACE}"/backoffice-backend/envvars.patch.yaml
 
           # Patch all ingresses to hide behind VPN
           find "${GITOPS_PATH}/environments/${NAMESPACE}" -name "ingress.yaml" | while read ingress_file; do yq -i ".metadata.annotations.\"nginx.ingress.kubernetes.io/whitelist-source-range\" = \"${VPN_IP}\"" "$ingress_file"; done

@@ -41,7 +41,7 @@ runs:
       run: |
         # Set up docker to authenticate
         # via gcloud command-line tool.
-        gcloud auth configure-docker
+        gcloud auth configure-docker gcr.io,eu.gcr.io,europe-west3-docker.pkg.dev
 
     - name: Check if already an image built for the commit
       shell: bash

@@ -13,6 +13,10 @@ inputs:
     description: "Build args for the docker image"
     required: false
     default: ''
+  registry:
+    description: "Location to push the docker image, container registry by default"
+    required: false
+    default: 'container'
 
 runs:
   using: "composite"
@@ -42,8 +46,14 @@ runs:
     - name: Check if already an image built for the commit
       shell: bash
       run: |
-        CHECK_IMAGE_TAG=$(gcloud container images list-tags gcr.io/${GCLOUD_PROJECT}/${IMAGE_NAME} | grep "$COMMIT_HASH_SHORT" | awk '{ print $2}' | sed 's/,.*//' | xargs || true)
+        if [[ "$REGISTRY" == "artifact" ]]; then
+          CHECK_IMAGE_TAG=$(gcloud container images list-tags europe-west3-docker.pkg.dev/${GCLOUD_PROJECT}/${IMAGE_NAME}/${IMAGE_NAME} | grep "$COMMIT_HASH_SHORT" | awk '{ print $2}' | sed 's/,.*//' | xargs || true)
+        else
+          CHECK_IMAGE_TAG=$(gcloud container images list-tags gcr.io/${GCLOUD_PROJECT}/${IMAGE_NAME} | grep "$COMMIT_HASH_SHORT" | awk '{ print $2}' | sed 's/,.*//' | xargs || true)
+        fi
         echo "CHECK_IMAGE_TAG=$CHECK_IMAGE_TAG" >> $GITHUB_ENV
+      env:
+        REGISTRY: "${{ inputs.registry }}"
 
     # Build the Docker image
     - name: Build
@@ -64,12 +74,20 @@ runs:
     - name: Publish
       shell: bash
       run: |
-        IMAGE_ID=gcr.io/$GCLOUD_PROJECT/$IMAGE_NAME
-        echo IMAGE_ID=$IMAGE_ID
-        echo VERSION=$VERSION
+        if [[ "$REGISTRY" == "artifact" ]]; then
+          IMAGE_ID=europe-west3-docker.pkg.dev/${GCLOUD_PROJECT}/${IMAGE_NAME}/${IMAGE_NAME}
+        else
+          IMAGE_ID=gcr.io/$GCLOUD_PROJECT/$IMAGE_NAME
+        fi
+
+        echo "IMAGE_ID=${IMAGE_ID}"
+        echo "VERSION=${VERSION}"
+
         if [[ "$CHECK_IMAGE_TAG" == "" ]]; then
           docker tag image $IMAGE_ID:$VERSION
           docker push $IMAGE_ID:$VERSION
         else
           gcloud container images add-tag -q  gcr.io/${GCLOUD_PROJECT}/${IMAGE_NAME}:${CHECK_IMAGE_TAG}  gcr.io/${GCLOUD_PROJECT}/${IMAGE_NAME}:$VERSION
         fi
+      env:
+        REGISTRY: "${{ inputs.registry }}"

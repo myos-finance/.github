@@ -13,10 +13,6 @@ inputs:
     description: "Build args for the docker image"
     required: false
     default: ''
-  registry:
-    description: "Location to push the docker image, artifact registry by default"
-    required: false
-    default: 'registry'
 
 runs:
   using: "composite"
@@ -41,16 +37,12 @@ runs:
       run: |
         # Set up docker to authenticate
         # via gcloud command-line tool.
-        gcloud auth configure-docker gcr.io,eu.gcr.io,europe-west3-docker.pkg.dev
+        gcloud auth configure-docker europe-west3-docker.pkg.dev
 
     - name: Check if already an image built for the commit
       shell: bash
       run: |
-        if [[ "$REGISTRY" == "artifact" ]]; then
-          CHECK_IMAGE_TAG=$(gcloud container images list-tags europe-west3-docker.pkg.dev/${GCLOUD_PROJECT}/${IMAGE_NAME}/${IMAGE_NAME} | grep "$COMMIT_HASH_SHORT" | awk '{ print $2}' | sed 's/,.*//' | xargs || true)
-        else
-          CHECK_IMAGE_TAG=$(gcloud container images list-tags gcr.io/${GCLOUD_PROJECT}/${IMAGE_NAME} | grep "$COMMIT_HASH_SHORT" | awk '{ print $2}' | sed 's/,.*//' | xargs || true)
-        fi
+        CHECK_IMAGE_TAG=$(gcloud container images list-tags europe-west3-docker.pkg.dev/${GCLOUD_PROJECT}/${IMAGE_NAME}/${IMAGE_NAME} | grep "$COMMIT_HASH_SHORT" | awk '{ print $2}' | sed 's/,.*//' | xargs || true)
         echo "CHECK_IMAGE_TAG=$CHECK_IMAGE_TAG" >> $GITHUB_ENV
       env:
         REGISTRY: "${{ inputs.registry }}"
@@ -74,12 +66,7 @@ runs:
     - name: Publish
       shell: bash
       run: |
-        if [[ "$REGISTRY" == "artifact" ]]; then
-          IMAGE_ID=europe-west3-docker.pkg.dev/${GCLOUD_PROJECT}/${IMAGE_NAME}/${IMAGE_NAME}
-        else
-          IMAGE_ID=gcr.io/$GCLOUD_PROJECT/$IMAGE_NAME
-        fi
-
+        IMAGE_ID=europe-west3-docker.pkg.dev/${GCLOUD_PROJECT}/${IMAGE_NAME}/${IMAGE_NAME}
         echo "IMAGE_ID=${IMAGE_ID}"
         echo "VERSION=${VERSION}"
 
@@ -87,7 +74,7 @@ runs:
           docker tag image $IMAGE_ID:$VERSION
           docker push $IMAGE_ID:$VERSION
         else
-          gcloud container images add-tag -q  gcr.io/${GCLOUD_PROJECT}/${IMAGE_NAME}:${CHECK_IMAGE_TAG}  gcr.io/${GCLOUD_PROJECT}/${IMAGE_NAME}:$VERSION
+          gcloud container images add-tag -q  europe-west3-docker.pkg.dev/${GCLOUD_PROJECT}/${IMAGE_NAME}/${IMAGE_NAME}:${CHECK_IMAGE_TAG}  europe-west3-docker.pkg.dev/${GCLOUD_PROJECT}/${IMAGE_NAME}/${IMAGE_NAME}:$VERSION
         fi
       env:
         REGISTRY: "${{ inputs.registry }}"

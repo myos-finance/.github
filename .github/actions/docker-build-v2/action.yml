@@ -14,9 +14,9 @@ inputs:
     required: false
     default: ''
   registry:
-    description: "Location to push the docker image, container registry by default"
+    description: "Location to push the docker image, artifact registry by default"
     required: false
-    default: 'container'
+    default: 'registry'
 
 runs:
   using: "composite"

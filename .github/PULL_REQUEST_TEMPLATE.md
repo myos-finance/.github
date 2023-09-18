@@ -1,6 +1,6 @@
 ## Description
 
-Ticket: [PLAT-000](https://myos.atlassian.net/browse/PLAT-000)
+
 
 ## Supporting info
 
@@ -20,7 +20,7 @@ Please include any supporting information reviewers may need in order to underst
   - [ ] External documentation has been written
 - Downstream effects (select one)
   - [ ] There are no breaking changes
-  - [ ] Breaking changes are being coordinated with owners of affected servies
+  - [ ] Breaking changes are being coordinated with owners of affected services
 
 ## Other PR templates
 

@@ -1,0 +1,124 @@
+name: 'Terraform action'
+
+description: 'Terraform init, fmt, plan, apply'
+
+inputs:
+  terraform-version:
+      description: 'Terraform version to setup with'
+      required: false
+      default: '1.2.3'
+  working-directory:
+      description: 'Directory for terraform to be executed in'
+      required: true
+  apply-branch:
+      description: 'Terraform apply only executed on that branch'
+      required: false
+      default: 'main'
+  current-branch:
+      description: 'Terraform apply only executed on that branch'
+      required: true
+  google-credentials:
+    description: 'Google credentials (terraform service account json file)'
+    required: true
+  sentry-auth-token:
+    description: "Sentry auth token"
+    required: true
+  cloudflare-api-token:
+    description: "Cloudflare API token"
+    required: true
+  github-token:
+    description: "Github token"
+    required: true
+  myos-ci-ssh-private-key:
+    description: "Private ssh key to authenticate to google and download modules"
+    required: true
+  pritunl-token:
+    description: Pritunl token"
+    required: true
+  pritunl-secret:
+    description: "Pritunl secret"
+    required: true
+  datadog-api-key:
+    description: "Datadog API key"
+    required: true
+  datadog-app-key:
+    description: "Datadog APP key"
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ inputs.terraform-version }}
+
+    - name: Set up credentials
+      shell: bash
+      run: echo "$GOOGLE_CREDENTIALS_CONTENT" > /tmp/.google_credentials.json
+      env:
+        GOOGLE_CREDENTIALS_CONTENT: ${{ inputs.google-credentials }}
+
+    - name: Git config
+      shell: bash
+      run: |
+        git config --global user.email "ci@myos.com"
+        git config --global user.name "myos-ci"
+
+    - name: Set up ssh key
+      uses: webfactory/ssh-agent@v0.5.4
+      with:
+          ssh-private-key: ${{ inputs.myos-ci-ssh-private-key }}
+
+    - name: Terraform Init
+      shell: bash
+      run: terraform init
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GOOGLE_CREDENTIALS: /tmp/.google_credentials.json
+        SENTRY_TOKEN: ${{ inputs.sentry-auth-token }}
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        TF_VAR_pritunl_token: ${{ inputs.pritunl-token }}
+        TF_VAR_pritunl_secret: ${{ inputs.pritunl-secret }}
+        DD_API_KEY: ${{ inputs.datadog-api-key }}
+        DD_APP_KEY: ${{ inputs.datadog-app-key }}
+
+    - name: Terraform fmt
+      shell: bash
+      run: terraform fmt -check
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Terraform validate
+      shell: bash
+      run: terraform validate
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Terraform plan
+      shell: bash
+      run: terraform plan -out tfplan
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GOOGLE_CREDENTIALS: /tmp/.google_credentials.json
+        SENTRY_TOKEN: ${{ inputs.sentry-auth-token }}
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        TF_VAR_pritunl_token: ${{ inputs.pritunl-token }}
+        TF_VAR_pritunl_secret: ${{ inputs.pritunl-secret }}
+        DD_API_KEY: ${{ inputs.datadog-api-key }}
+        DD_APP_KEY: ${{ inputs.datadog-app-key }}
+
+    - name: Terraform destroy
+      shell: bash
+      if: ${{ inputs.current-branch == format('refs/heads/{0}', inputs.apply-branch) }}
+      run: terraform destroy tfplan
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GOOGLE_CREDENTIALS: /tmp/.google_credentials.json
+        SENTRY_TOKEN: ${{ inputs.sentry-auth-token }}
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        TF_VAR_pritunl_token: ${{ inputs.pritunl-token }}
+        TF_VAR_pritunl_secret: ${{ inputs.pritunl-secret }}
+        DD_API_KEY: ${{ inputs.datadog-api-key }}
+        DD_APP_KEY: ${{ inputs.datadog-app-key }}
